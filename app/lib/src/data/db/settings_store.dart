@@ -19,9 +19,9 @@ class SettingsStore {
   final FusenDatabase _db;
 
   Future<String?> read(String key) async {
-    final row = await (_db.select(_db.settings)
-          ..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.settings,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 

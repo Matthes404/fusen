@@ -86,7 +86,9 @@ void main() {
     });
 
     test('Einrückung im Codeblock bleibt erhalten', () {
-      final draft = parseCapture('@chess !ref Aufruf:\n    cargo run --release');
+      final draft = parseCapture(
+        '@chess !ref Aufruf:\n    cargo run --release',
+      );
 
       expect(draft.projectQuery, 'chess');
       expect(draft.type, NoteType.reference);

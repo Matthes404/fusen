@@ -16,7 +16,7 @@ class FusenDatabase extends _$FusenDatabase {
 
   /// Datenbank im App-Verzeichnis des Geräts.
   FusenDatabase.open({String name = 'fusen'})
-      : super(driftDatabase(name: name));
+    : super(driftDatabase(name: name));
 
   /// Flüchtige Datenbank für Tests.
   FusenDatabase.memory() : super(_memoryExecutor());
@@ -38,19 +38,19 @@ class FusenDatabase extends _$FusenDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-          await customStatement(
-            'CREATE INDEX IF NOT EXISTS idx_notes_project '
-            'ON notes (project_id, type, status)',
-          );
-          await customStatement(
-            'CREATE INDEX IF NOT EXISTS idx_notes_pending ON notes (pending_sync)',
-          );
-          await customStatement(
-            'CREATE INDEX IF NOT EXISTS idx_projects_pending '
-            'ON projects (pending_sync)',
-          );
-        },
+    onCreate: (m) async {
+      await m.createAll();
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_notes_project '
+        'ON notes (project_id, type, status)',
       );
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_notes_pending ON notes (pending_sync)',
+      );
+      await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_projects_pending '
+        'ON projects (pending_sync)',
+      );
+    },
+  );
 }

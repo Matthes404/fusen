@@ -55,8 +55,7 @@ class Projects extends Table {
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
   /// Nur lokal: Datensatz wartet darauf, zum Server geschoben zu werden.
-  BoolColumn get pendingSync =>
-      boolean().withDefault(const Constant(true))();
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -111,8 +110,7 @@ class Notes extends Table {
   /// Welches Gerät zuletzt geschrieben hat – hilft bei der Fehlersuche im Sync.
   TextColumn get deviceId => text()();
 
-  BoolColumn get pendingSync =>
-      boolean().withDefault(const Constant(true))();
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

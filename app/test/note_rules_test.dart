@@ -47,17 +47,22 @@ void main() {
       final b = await projects.create(name: 'B');
 
       final inA = await notes.create(
-          projectId: a.id, type: NoteType.instruction, body: 'A gilt');
+        projectId: a.id,
+        type: NoteType.instruction,
+        body: 'A gilt',
+      );
       final inB = await notes.create(
-          projectId: b.id, type: NoteType.instruction, body: 'B gilt');
+        projectId: b.id,
+        type: NoteType.instruction,
+        body: 'B gilt',
+      );
 
       expect((await notes.findById(inA.id))!.status, NoteStatus.open);
       expect((await notes.findById(inB.id))!.status, NoteStatus.open);
     });
 
     test('gilt auch in der Inbox', () async {
-      final first =
-          await notes.create(type: NoteType.instruction, body: 'alt');
+      final first = await notes.create(type: NoteType.instruction, body: 'alt');
       await notes.create(type: NoteType.instruction, body: 'neu');
 
       expect((await notes.findById(first.id))!.status, NoteStatus.done);
@@ -66,11 +71,15 @@ void main() {
     test('Typwechsel zu Anweisung verdrängt die bisherige', () async {
       final project = await projects.create(name: 'Praktikum');
       final old = await notes.create(
-          projectId: project.id,
-          type: NoteType.instruction,
-          body: 'Woche 1');
+        projectId: project.id,
+        type: NoteType.instruction,
+        body: 'Woche 1',
+      );
       final idea = await notes.create(
-          projectId: project.id, type: NoteType.idea, body: 'Woche 2');
+        projectId: project.id,
+        type: NoteType.idea,
+        body: 'Woche 2',
+      );
 
       await notes.changeType(idea.id, NoteType.instruction);
 
@@ -81,9 +90,14 @@ void main() {
     test('Verschieben ins Projekt verdrängt dessen Anweisung', () async {
       final project = await projects.create(name: 'Studium');
       final resident = await notes.create(
-          projectId: project.id, type: NoteType.instruction, body: 'alt');
-      final incoming =
-          await notes.create(type: NoteType.instruction, body: 'aus Inbox');
+        projectId: project.id,
+        type: NoteType.instruction,
+        body: 'alt',
+      );
+      final incoming = await notes.create(
+        type: NoteType.instruction,
+        body: 'aus Inbox',
+      );
 
       await notes.moveToProject(incoming.id, project.id);
 
@@ -94,9 +108,15 @@ void main() {
     test('eine alte Anweisung wieder öffnen verdrängt die aktuelle', () async {
       final project = await projects.create(name: 'Chess');
       final first = await notes.create(
-          projectId: project.id, type: NoteType.instruction, body: 'erste');
+        projectId: project.id,
+        type: NoteType.instruction,
+        body: 'erste',
+      );
       final second = await notes.create(
-          projectId: project.id, type: NoteType.instruction, body: 'zweite');
+        projectId: project.id,
+        type: NoteType.instruction,
+        body: 'zweite',
+      );
 
       await notes.setStatus(first.id, NoteStatus.open);
 
@@ -157,9 +177,15 @@ void main() {
     test('erscheint nicht auf dem Board, sondern im Log', () async {
       final project = await projects.create(name: 'Chess');
       await notes.create(
-          projectId: project.id, type: NoteType.log, body: 'gebaut');
+        projectId: project.id,
+        type: NoteType.log,
+        body: 'gebaut',
+      );
       await notes.create(
-          projectId: project.id, type: NoteType.idea, body: 'Einfall');
+        projectId: project.id,
+        type: NoteType.idea,
+        body: 'Einfall',
+      );
 
       final board = await notes.watchBoard(project.id).first;
       final log = await notes.watchLog(project.id).first;
@@ -171,10 +197,16 @@ void main() {
     test('das Log zeigt den neuesten Eintrag zuerst', () async {
       final project = await projects.create(name: 'Chess');
       await notes.create(
-          projectId: project.id, type: NoteType.log, body: 'zuerst');
+        projectId: project.id,
+        type: NoteType.log,
+        body: 'zuerst',
+      );
       clock.advance(const Duration(hours: 1));
       await notes.create(
-          projectId: project.id, type: NoteType.log, body: 'danach');
+        projectId: project.id,
+        type: NoteType.log,
+        body: 'danach',
+      );
 
       final log = await notes.watchLog(project.id).first;
       expect(log.map((n) => n.body), ['danach', 'zuerst']);
@@ -183,8 +215,10 @@ void main() {
 
   group('Frage', () {
     test('wird beim Beantworten geschlossen und archiviert', () async {
-      final question =
-          await notes.create(type: NoteType.question, body: 'Bis wann?');
+      final question = await notes.create(
+        type: NoteType.question,
+        body: 'Bis wann?',
+      );
 
       await notes.answerQuestion(question.id, 'Bis zum 30.');
 
@@ -195,8 +229,10 @@ void main() {
     });
 
     test('die Antwort ist durchsuchbar', () async {
-      final question =
-          await notes.create(type: NoteType.question, body: 'Bis wann?');
+      final question = await notes.create(
+        type: NoteType.question,
+        body: 'Bis wann?',
+      );
       await notes.answerQuestion(question.id, 'Bis Karfreitag');
 
       final hits = await notes.search(terms: ['karfreitag']).first;
@@ -217,8 +253,10 @@ void main() {
     });
 
     test('räumt Felder auf, die der neue Typ nicht kennt', () async {
-      final requirement =
-          await notes.create(type: NoteType.requirement, body: 'Undo');
+      final requirement = await notes.create(
+        type: NoteType.requirement,
+        body: 'Undo',
+      );
       await notes.setPriority(requirement.id, NotePriority.must);
 
       await notes.changeType(requirement.id, NoteType.step);
@@ -274,11 +312,20 @@ void main() {
     test('offene Zettel werden pro Projekt gezählt', () async {
       final project = await projects.create(name: 'Chess');
       final done = await notes.create(
-          projectId: project.id, type: NoteType.step, body: 'fertig');
+        projectId: project.id,
+        type: NoteType.step,
+        body: 'fertig',
+      );
       await notes.create(
-          projectId: project.id, type: NoteType.step, body: 'offen');
+        projectId: project.id,
+        type: NoteType.step,
+        body: 'offen',
+      );
       await notes.create(
-          projectId: project.id, type: NoteType.log, body: 'zählt nicht');
+        projectId: project.id,
+        type: NoteType.log,
+        body: 'zählt nicht',
+      );
       await notes.create(body: 'inbox');
       await notes.setStatus(done.id, NoteStatus.done);
 
@@ -312,16 +359,23 @@ void main() {
   });
 
   group('Projekte', () {
-    test('@-Eingabe findet ein Projekt exakt oder als eindeutigen Präfix',
-        () async {
-      await projects.create(name: 'Chess Engine');
-      await projects.create(name: 'Praktikum');
+    test(
+      '@-Eingabe findet ein Projekt exakt oder als eindeutigen Präfix',
+      () async {
+        await projects.create(name: 'Chess Engine');
+        await projects.create(name: 'Praktikum');
 
-      expect((await projects.findByNameOrPrefix('chess'))!.name, 'Chess Engine');
-      expect((await projects.findByNameOrPrefix('CHESS ENGINE'))!.name,
-          'Chess Engine');
-      expect(await projects.findByNameOrPrefix('x'), isNull);
-    });
+        expect(
+          (await projects.findByNameOrPrefix('chess'))!.name,
+          'Chess Engine',
+        );
+        expect(
+          (await projects.findByNameOrPrefix('CHESS ENGINE'))!.name,
+          'Chess Engine',
+        );
+        expect(await projects.findByNameOrPrefix('x'), isNull);
+      },
+    );
 
     test('mehrdeutiger Präfix trifft nicht', () async {
       await projects.create(name: 'Praktikum');
@@ -344,7 +398,9 @@ void main() {
 
       expect(await projects.watchProjects().first, isEmpty);
       expect(
-          (await projects.watchProjects(includeArchived: true).first).length, 1);
+        (await projects.watchProjects(includeArchived: true).first).length,
+        1,
+      );
     });
   });
 
@@ -362,7 +418,9 @@ void main() {
       expect((await notes.search(terms: ['nnue']).first).single.id, note.id);
       expect((await notes.search(terms: ['int8']).first).single.id, note.id);
       expect(
-          (await notes.search(terms: ['performance']).first).single.id, note.id);
+        (await notes.search(terms: ['performance']).first).single.id,
+        note.id,
+      );
     });
 
     test('verknüpft mehrere Begriffe mit UND', () async {
@@ -377,8 +435,10 @@ void main() {
     test('ignoriert Groß-/Kleinschreibung auch bei Umlauten', () async {
       final note = await notes.create(body: 'Überarbeiten und ÄNDERN');
 
-      expect((await notes.search(terms: ['überarbeiten']).first).single.id,
-          note.id);
+      expect(
+        (await notes.search(terms: ['überarbeiten']).first).single.id,
+        note.id,
+      );
       expect((await notes.search(terms: ['ändern']).first).single.id, note.id);
       expect((await notes.search(terms: ['ÄNDERN']).first).single.id, note.id);
     });
@@ -387,11 +447,20 @@ void main() {
       final a = await projects.create(name: 'A');
       final b = await projects.create(name: 'B');
       final target = await notes.create(
-          projectId: a.id, type: NoteType.step, body: 'gemeinsames Wort');
+        projectId: a.id,
+        type: NoteType.step,
+        body: 'gemeinsames Wort',
+      );
       await notes.create(
-          projectId: b.id, type: NoteType.step, body: 'gemeinsames Wort');
+        projectId: b.id,
+        type: NoteType.step,
+        body: 'gemeinsames Wort',
+      );
       await notes.create(
-          projectId: a.id, type: NoteType.idea, body: 'gemeinsames Wort');
+        projectId: a.id,
+        type: NoteType.idea,
+        body: 'gemeinsames Wort',
+      );
 
       final hits = await notes
           .search(
@@ -429,8 +498,9 @@ void main() {
       final note = await notes.create(body: 'neu');
       expect(note.pendingSync, isTrue);
 
-      await (db.update(db.notes)..where((t) => t.id.equals(note.id)))
-          .write(const NotesCompanion(pendingSync: Value(false)));
+      await (db.update(db.notes)..where((t) => t.id.equals(note.id))).write(
+        const NotesCompanion(pendingSync: Value(false)),
+      );
 
       await notes.updateContent(note.id, body: 'geändert');
       expect((await notes.findById(note.id))!.pendingSync, isTrue);

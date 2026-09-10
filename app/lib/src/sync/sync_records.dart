@@ -38,26 +38,26 @@ class SyncProject {
   });
 
   factory SyncProject.fromRow(ProjectRow row) => SyncProject(
-        id: row.id,
-        name: row.name,
-        color: row.color,
-        sortOrder: row.sortOrder,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        archivedAt: row.archivedAt,
-        deletedAt: row.deletedAt,
-      );
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    sortOrder: row.sortOrder,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt,
+    deletedAt: row.deletedAt,
+  );
 
   factory SyncProject.fromJson(Map<String, dynamic> json) => SyncProject(
-        id: localIdFor(json['id'].toString()),
-        name: json['name']?.toString() ?? '',
-        color: (json['color'] as num?)?.toInt() ?? 0xFF6E56CF,
-        sortOrder: (json['sort_order'] as num?)?.toDouble() ?? 0,
-        createdAt: _parseTime(json['created_at']) ?? DateTime.now().toUtc(),
-        updatedAt: _parseTime(json['updated_at']) ?? DateTime.now().toUtc(),
-        archivedAt: _parseTime(json['archived_at']),
-        deletedAt: _parseTime(json['deleted_at']),
-      );
+    id: localIdFor(json['id'].toString()),
+    name: json['name']?.toString() ?? '',
+    color: (json['color'] as num?)?.toInt() ?? 0xFF6E56CF,
+    sortOrder: (json['sort_order'] as num?)?.toDouble() ?? 0,
+    createdAt: _parseTime(json['created_at']) ?? DateTime.now().toUtc(),
+    updatedAt: _parseTime(json['updated_at']) ?? DateTime.now().toUtc(),
+    archivedAt: _parseTime(json['archived_at']),
+    deletedAt: _parseTime(json['deleted_at']),
+  );
 
   final String id;
   final String name;
@@ -69,27 +69,27 @@ class SyncProject {
   final DateTime? deletedAt;
 
   Map<String, dynamic> toJson() => {
-        'id': remoteIdFor(id),
-        'name': name,
-        'color': color,
-        'sort_order': sortOrder,
-        'created_at': _formatTime(createdAt),
-        'updated_at': _formatTime(updatedAt),
-        'archived_at': archivedAt == null ? '' : _formatTime(archivedAt!),
-        'deleted_at': deletedAt == null ? '' : _formatTime(deletedAt!),
-      };
+    'id': remoteIdFor(id),
+    'name': name,
+    'color': color,
+    'sort_order': sortOrder,
+    'created_at': _formatTime(createdAt),
+    'updated_at': _formatTime(updatedAt),
+    'archived_at': archivedAt == null ? '' : _formatTime(archivedAt!),
+    'deleted_at': deletedAt == null ? '' : _formatTime(deletedAt!),
+  };
 
   ProjectRow toRow({required bool pendingSync}) => ProjectRow(
-        id: id,
-        name: name,
-        color: color,
-        sortOrder: sortOrder,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
-        archivedAt: archivedAt,
-        deletedAt: deletedAt,
-        pendingSync: pendingSync,
-      );
+    id: id,
+    name: name,
+    color: color,
+    sortOrder: sortOrder,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    archivedAt: archivedAt,
+    deletedAt: deletedAt,
+    pendingSync: pendingSync,
+  );
 }
 
 /// Ein Zettel so, wie er über die Leitung geht.
@@ -113,22 +113,22 @@ class SyncNote {
   });
 
   factory SyncNote.fromRow(NoteRow row) => SyncNote(
-        id: row.id,
-        projectId: row.projectId,
-        type: row.type,
-        title: row.title,
-        body: row.body,
-        answer: row.answer,
-        status: row.status,
-        priority: row.priority,
-        tags: row.tags,
-        sortOrder: row.sortOrder,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        archivedAt: row.archivedAt,
-        deletedAt: row.deletedAt,
-        deviceId: row.deviceId,
-      );
+    id: row.id,
+    projectId: row.projectId,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    answer: row.answer,
+    status: row.status,
+    priority: row.priority,
+    tags: row.tags,
+    sortOrder: row.sortOrder,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt,
+    deletedAt: row.deletedAt,
+    deviceId: row.deviceId,
+  );
 
   factory SyncNote.fromJson(Map<String, dynamic> json) {
     final rawProject = json['project_id']?.toString() ?? '';
@@ -175,20 +175,20 @@ class SyncNote {
   final String deviceId;
 
   Map<String, dynamic> toJson() => {
-        'id': remoteIdFor(id),
-        'project_id': projectId == null ? '' : remoteIdFor(projectId!),
-        'type': type.name,
-        'title': title ?? '',
-        'body': body,
-        'answer': answer ?? '',
-        'status': status.name,
-        'priority': priority?.name ?? '',
-        'tags': tags,
-        'sort_order': sortOrder,
-        'created_at': _formatTime(createdAt),
-        'updated_at': _formatTime(updatedAt),
-        'archived_at': archivedAt == null ? '' : _formatTime(archivedAt!),
-        'deleted_at': deletedAt == null ? '' : _formatTime(deletedAt!),
-        'device_id': deviceId,
-      };
+    'id': remoteIdFor(id),
+    'project_id': projectId == null ? '' : remoteIdFor(projectId!),
+    'type': type.name,
+    'title': title ?? '',
+    'body': body,
+    'answer': answer ?? '',
+    'status': status.name,
+    'priority': priority?.name ?? '',
+    'tags': tags,
+    'sort_order': sortOrder,
+    'created_at': _formatTime(createdAt),
+    'updated_at': _formatTime(updatedAt),
+    'archived_at': archivedAt == null ? '' : _formatTime(archivedAt!),
+    'deleted_at': deletedAt == null ? '' : _formatTime(deletedAt!),
+    'device_id': deviceId,
+  };
 }

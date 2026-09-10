@@ -50,12 +50,10 @@ class SyncOutcome {
 class SyncService {
   SyncService({
     required FusenDatabase database,
-    required SyncBackend backend,
-    required SettingsStore settings,
+    required this._backend,
+    required this._settings,
     this._clock = const SystemClock(),
-  })  : _db = database,
-        _backend = backend,
-        _settings = settings;
+  }) : _db = database;
 
   final FusenDatabase _db;
   final SyncBackend _backend;
@@ -145,12 +143,12 @@ class SyncService {
   // --- Hochladen ---------------------------------------------------------
 
   Future<int> _pushPending() async {
-    final projects = await (_db.select(_db.projects)
-          ..where((t) => t.pendingSync.equals(true)))
-        .get();
-    final notes = await (_db.select(_db.notes)
-          ..where((t) => t.pendingSync.equals(true)))
-        .get();
+    final projects = await (_db.select(
+      _db.projects,
+    )..where((t) => t.pendingSync.equals(true))).get();
+    final notes = await (_db.select(
+      _db.notes,
+    )..where((t) => t.pendingSync.equals(true))).get();
 
     if (projects.isEmpty && notes.isEmpty) return 0;
 
@@ -175,16 +173,16 @@ class SyncService {
   /// Setzt `pendingSync` nur zurück, wenn der Datensatz seit dem Hochladen
   /// nicht erneut bearbeitet wurde – sonst ginge die neuere Änderung verloren.
   Future<void> _clearPendingProject(ProjectRow pushed) async {
-    await (_db.update(_db.projects)
-          ..where((t) =>
-              t.id.equals(pushed.id) & t.updatedAt.equals(pushed.updatedAt)))
+    await (_db.update(_db.projects)..where(
+          (t) => t.id.equals(pushed.id) & t.updatedAt.equals(pushed.updatedAt),
+        ))
         .write(const ProjectsCompanion(pendingSync: Value(false)));
   }
 
   Future<void> _clearPendingNote(NoteRow pushed) async {
-    await (_db.update(_db.notes)
-          ..where((t) =>
-              t.id.equals(pushed.id) & t.updatedAt.equals(pushed.updatedAt)))
+    await (_db.update(_db.notes)..where(
+          (t) => t.id.equals(pushed.id) & t.updatedAt.equals(pushed.updatedAt),
+        ))
         .write(const NotesCompanion(pendingSync: Value(false)));
   }
 
@@ -209,9 +207,9 @@ class SyncService {
   }
 
   Future<bool> _mergeProject(SyncProject remote) async {
-    final local = await (_db.select(_db.projects)
-          ..where((t) => t.id.equals(remote.id)))
-        .getSingleOrNull();
+    final local = await (_db.select(
+      _db.projects,
+    )..where((t) => t.id.equals(remote.id))).getSingleOrNull();
 
     if (local != null && !remote.updatedAt.isAfter(local.updatedAt)) {
       return false;
@@ -223,15 +221,17 @@ class SyncService {
   }
 
   Future<bool> _mergeNote(SyncNote remote) async {
-    final local = await (_db.select(_db.notes)
-          ..where((t) => t.id.equals(remote.id)))
-        .getSingleOrNull();
+    final local = await (_db.select(
+      _db.notes,
+    )..where((t) => t.id.equals(remote.id))).getSingleOrNull();
 
     if (local != null && !remote.updatedAt.isAfter(local.updatedAt)) {
       return false;
     }
 
-    await _db.into(_db.notes).insertOnConflictUpdate(
+    await _db
+        .into(_db.notes)
+        .insertOnConflictUpdate(
           NoteRow(
             id: remote.id,
             projectId: remote.projectId,

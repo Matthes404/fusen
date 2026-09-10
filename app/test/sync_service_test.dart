@@ -33,8 +33,10 @@ class FakeSyncBackend implements SyncBackend {
   Future<void> connect(SyncCredentials credentials) async {
     connectCount++;
     if (expectedCode != null && credentials.accessCode != expectedCode) {
-      throw const SyncBackendException('Zugangscode stimmt nicht.',
-          isAuthFailure: true);
+      throw const SyncBackendException(
+        'Zugangscode stimmt nicht.',
+        isAuthFailure: true,
+      );
     }
     connectedWith = credentials;
   }
@@ -122,8 +124,10 @@ void main() {
   late FakeSyncBackend backend;
   late SyncService sync;
 
-  const credentials =
-      SyncCredentials(serverUrl: 'https://fusen.example', accessCode: 'geheim');
+  const credentials = SyncCredentials(
+    serverUrl: 'https://fusen.example',
+    accessCode: 'geheim',
+  );
 
   setUp(() async {
     clock = FixedClock(DateTime.utc(2026, 5, 1, 12));
@@ -232,23 +236,28 @@ void main() {
   group('Herunterladen', () {
     test('übernimmt unbekannte Zettel', () async {
       backend.seedNote(
-        remoteNote(id: 'aaaaaaaa-0000-4000-8000-000000000001',
-            updatedAt: DateTime.utc(2026, 5, 1, 11), body: 'von woanders'),
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000001',
+          updatedAt: DateTime.utc(2026, 5, 1, 11),
+          body: 'von woanders',
+        ),
       );
 
       final outcome = await sync.syncNow();
 
       expect(outcome.pulled, 1);
-      final row =
-          await notes.findById('aaaaaaaa-0000-4000-8000-000000000001');
+      final row = await notes.findById('aaaaaaaa-0000-4000-8000-000000000001');
       expect(row!.body, 'von woanders');
       expect(row.pendingSync, isFalse);
     });
 
     test('macht heruntergeladene Zettel durchsuchbar', () async {
       backend.seedNote(
-        remoteNote(id: 'aaaaaaaa-0000-4000-8000-000000000002',
-            updatedAt: DateTime.utc(2026, 5, 1, 11), body: 'Ähnliches Thema'),
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000002',
+          updatedAt: DateTime.utc(2026, 5, 1, 11),
+          body: 'Ähnliches Thema',
+        ),
       );
 
       await sync.syncNow();
@@ -258,8 +267,10 @@ void main() {
 
     test('holt beim zweiten Mal nur Neues', () async {
       backend.seedNote(
-        remoteNote(id: 'aaaaaaaa-0000-4000-8000-000000000003',
-            updatedAt: DateTime.utc(2026, 5, 1, 11)),
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000003',
+          updatedAt: DateTime.utc(2026, 5, 1, 11),
+        ),
         at: DateTime.utc(2026, 5, 1, 11),
       );
 
@@ -271,25 +282,27 @@ void main() {
   group('Konflikte (Last-Write-Wins)', () {
     const id = 'aaaaaaaa-0000-4000-8000-00000000000f';
 
-    test('die neuere Fassung gewinnt – auch wenn sie vom Server kommt',
-        () async {
-      await notes.create(body: 'lokal');
-      final local = (await notes.watchBoard(null).first).single;
-      await sync.syncNow();
+    test(
+      'die neuere Fassung gewinnt – auch wenn sie vom Server kommt',
+      () async {
+        await notes.create(body: 'lokal');
+        final local = (await notes.watchBoard(null).first).single;
+        await sync.syncNow();
 
-      serverClock.advance(const Duration(minutes: 10));
-      backend.seedNote(
-        remoteNote(
-          id: local.id,
-          updatedAt: clock.now().add(const Duration(minutes: 5)),
-          body: 'ferngesteuert',
-        ),
-      );
+        serverClock.advance(const Duration(minutes: 10));
+        backend.seedNote(
+          remoteNote(
+            id: local.id,
+            updatedAt: clock.now().add(const Duration(minutes: 5)),
+            body: 'ferngesteuert',
+          ),
+        );
 
-      await sync.syncNow();
+        await sync.syncNow();
 
-      expect((await notes.findById(local.id))!.body, 'ferngesteuert');
-    });
+        expect((await notes.findById(local.id))!.body, 'ferngesteuert');
+      },
+    );
 
     test('eine ältere Fassung vom Server überschreibt nichts', () async {
       await notes.create(body: 'lokal neu');

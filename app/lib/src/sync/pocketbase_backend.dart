@@ -20,7 +20,7 @@ const String notesCollection = 'notes';
 /// Sync gegen eine PocketBase-Instanz.
 class PocketBaseSyncBackend implements SyncBackend {
   PocketBaseSyncBackend({PocketBase Function(String baseUrl)? clientFactory})
-      : _clientFactory = clientFactory ?? PocketBase.new;
+    : _clientFactory = clientFactory ?? PocketBase.new;
 
   final PocketBase Function(String baseUrl) _clientFactory;
 
@@ -72,13 +72,21 @@ class PocketBaseSyncBackend implements SyncBackend {
     // Projekte zuerst: sonst zeigt ein Zettel kurzzeitig auf ein Projekt,
     // das der Server noch nicht kennt.
     for (final project in projects) {
-      final record = await _upsert(client, projectsCollection, project.id,
-          project.toJson());
+      final record = await _upsert(
+        client,
+        projectsCollection,
+        project.id,
+        project.toJson(),
+      );
       latest = _laterOf(latest, _updatedOf(record));
     }
     for (final note in notes) {
-      final record =
-          await _upsert(client, notesCollection, note.id, note.toJson());
+      final record = await _upsert(
+        client,
+        notesCollection,
+        note.id,
+        note.toJson(),
+      );
       latest = _laterOf(latest, _updatedOf(record));
     }
     return latest;
@@ -100,9 +108,7 @@ class PocketBaseSyncBackend implements SyncBackend {
         throw SyncBackendException(_describe(error));
       }
       try {
-        return await client
-            .collection(collection)
-            .update(remoteId, body: body);
+        return await client.collection(collection).update(remoteId, body: body);
       } on ClientException catch (updateError) {
         throw SyncBackendException(_describe(updateError));
       }
@@ -115,7 +121,9 @@ class PocketBaseSyncBackend implements SyncBackend {
     DateTime? since,
   ) async {
     try {
-      return await client.collection(collection).getFullList(
+      return await client
+          .collection(collection)
+          .getFullList(
             batch: 200,
             sort: 'updated',
             filter: since == null

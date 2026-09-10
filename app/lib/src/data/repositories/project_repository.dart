@@ -38,13 +38,13 @@ class ProjectRepository {
     return query.watch();
   }
 
-  Stream<ProjectRow?> watchProject(String id) =>
-      (_db.select(_db.projects)..where((t) => t.id.equals(id)))
-          .watchSingleOrNull();
+  Stream<ProjectRow?> watchProject(String id) => (_db.select(
+    _db.projects,
+  )..where((t) => t.id.equals(id))).watchSingleOrNull();
 
-  Future<ProjectRow?> findById(String id) =>
-      (_db.select(_db.projects)..where((t) => t.id.equals(id)))
-          .getSingleOrNull();
+  Future<ProjectRow?> findById(String id) => (_db.select(
+    _db.projects,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
 
   /// Sucht ein Projekt anhand einer Eingabe aus der Schnelleingabe (`@chess`).
   ///
@@ -55,17 +55,18 @@ class ProjectRepository {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return null;
 
-    final all = await (_db.select(_db.projects)
-          ..where((t) => t.deletedAt.isNull()))
-        .get();
+    final all = await (_db.select(
+      _db.projects,
+    )..where((t) => t.deletedAt.isNull())).get();
 
     for (final project in all) {
       if (project.name.toLowerCase() == needle) return project;
     }
 
     final active = all.where((p) => p.archivedAt == null);
-    final prefixMatches =
-        active.where((p) => p.name.toLowerCase().startsWith(needle)).toList();
+    final prefixMatches = active
+        .where((p) => p.name.toLowerCase().startsWith(needle))
+        .toList();
     if (prefixMatches.length == 1) return prefixMatches.first;
     return null;
   }
@@ -120,9 +121,9 @@ class ProjectRepository {
           pendingSync: const Value(true),
         ),
       );
-      await (_db.update(_db.notes)
-            ..where((t) => t.projectId.equals(id) & t.deletedAt.isNull()))
-          .write(
+      await (_db.update(
+        _db.notes,
+      )..where((t) => t.projectId.equals(id) & t.deletedAt.isNull())).write(
         NotesCompanion(
           deletedAt: Value(now),
           updatedAt: Value(now),
@@ -138,9 +139,9 @@ class ProjectRepository {
     final now = _clock.now();
     await _db.transaction(() async {
       for (var i = 0; i < idsInOrder.length; i++) {
-        await (_db.update(_db.projects)
-              ..where((t) => t.id.equals(idsInOrder[i])))
-            .write(
+        await (_db.update(
+          _db.projects,
+        )..where((t) => t.id.equals(idsInOrder[i]))).write(
           ProjectsCompanion(
             sortOrder: Value(orders[i]),
             updatedAt: Value(now),
@@ -162,15 +163,17 @@ class ProjectRepository {
 
   Future<double> _maxSortOrder() async {
     final max = _db.projects.sortOrder.max();
-    final row = await (_db.selectOnly(_db.projects)..addColumns([max]))
-        .getSingle();
+    final row = await (_db.selectOnly(
+      _db.projects,
+    )..addColumns([max])).getSingle();
     return row.read(max) ?? 0;
   }
 
   Future<int> _projectCount() async {
     final count = _db.projects.id.count();
-    final row =
-        await (_db.selectOnly(_db.projects)..addColumns([count])).getSingle();
+    final row = await (_db.selectOnly(
+      _db.projects,
+    )..addColumns([count])).getSingle();
     return row.read(count) ?? 0;
   }
 

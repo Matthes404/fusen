@@ -75,6 +75,25 @@ class NoteRepository {
     return query.watch();
   }
 
+  /// Die Inbox: alles ohne Projekt, neueste zuerst.
+  ///
+  /// Anders als die Projekt-Ansicht wird hier nicht nach Typ getrennt – die
+  /// Inbox ist zum Wegsortieren da, nicht zum Nachschlagen.
+  Stream<List<NoteRow>> watchInbox() {
+    return (_db.select(_db.notes)
+          ..where(
+            (t) =>
+                t.projectId.isNull() &
+                t.deletedAt.isNull() &
+                t.archivedAt.isNull(),
+          )
+          ..orderBy([
+            (t) =>
+                OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+          ]))
+        .watch();
+  }
+
   Stream<List<NoteRow>> watchArchive(String? projectId) {
     final query = _db.select(_db.notes)
       ..where((t) => t.deletedAt.isNull() & t.archivedAt.isNotNull())
@@ -85,9 +104,9 @@ class NoteRepository {
     return query.watch();
   }
 
-  Stream<NoteRow?> watchNote(String id) =>
-      (_db.select(_db.notes)..where((t) => t.id.equals(id)))
-          .watchSingleOrNull();
+  Stream<NoteRow?> watchNote(String id) => (_db.select(
+    _db.notes,
+  )..where((t) => t.id.equals(id))).watchSingleOrNull();
 
   Future<NoteRow?> findById(String id) =>
       (_db.select(_db.notes)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -277,10 +296,8 @@ class NoteRepository {
     );
   }
 
-  Future<void> archive(String id) => _write(
-        id,
-        NotesCompanion(archivedAt: Value(_clock.now())),
-      );
+  Future<void> archive(String id) =>
+      _write(id, NotesCompanion(archivedAt: Value(_clock.now())));
 
   Future<void> unarchive(String id) =>
       _write(id, const NotesCompanion(archivedAt: Value(null)));
@@ -398,8 +415,10 @@ class NoteRepository {
     );
   }
 
-  void _applyProjectFilter(SimpleSelectStatement<$NotesTable, NoteRow> query,
-      String? projectId) {
+  void _applyProjectFilter(
+    SimpleSelectStatement<$NotesTable, NoteRow> query,
+    String? projectId,
+  ) {
     if (projectId == null) {
       query.where((t) => t.projectId.isNull());
     } else {
