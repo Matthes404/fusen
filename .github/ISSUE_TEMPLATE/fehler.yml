@@ -1,0 +1,47 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet.
+labels: [bug]
+body:
+  - type: textarea
+    id: was-passiert
+    attributes:
+      label: Was passiert?
+      description: Was hast du getan, was ist passiert, was hattest du erwartet?
+      placeholder: |
+        1. Zettel mit `@chess !schritt …` abgelegt
+        2. Erwartet: liegt unter Nächste Schritte
+        3. Passiert: liegt in der Inbox
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plattform
+    attributes:
+      label: Plattform
+      options: [Android, iOS, Linux, macOS, Windows]
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Aus dem Release oder der Commit, den du gebaut hast.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sync
+    attributes:
+      label: Läuft ein Sync-Server?
+      options: [Nein, rein lokal, "Ja"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: mehr
+    attributes:
+      label: Sonst noch etwas
+      description: >
+        Fehlermeldungen, Screenshots. Wenn es um den Sync geht, hilft die
+        Gerätekennung aus Einstellungen → Gerät.

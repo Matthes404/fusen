@@ -1,0 +1,30 @@
+name: Idee
+description: Ein Vorschlag für Fusen.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem löst das?
+      description: >
+        Beschreib die Situation, nicht die Lösung – oft gibt es einen
+        einfacheren Weg als den zuerst gedachten.
+    validations:
+      required: true
+
+  - type: textarea
+    id: vorschlag
+    attributes:
+      label: Wie könnte es aussehen?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: konzept
+    attributes:
+      label: Steht es schon im Konzept?
+      description: >
+        docs/konzept.md listet unter P1 und P2 einiges, was bewusst nach dem
+        MVP kommt.
+      options:
+        - label: Ich habe in docs/konzept.md nachgesehen.

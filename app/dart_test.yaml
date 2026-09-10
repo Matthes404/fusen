@@ -1,0 +1,4 @@
+# Der Abgleich gegen eine echte PocketBase-Instanz ist gesondert markiert –
+# `flutter test` überspringt ihn, solange kein Server konfiguriert ist.
+tags:
+  integration:

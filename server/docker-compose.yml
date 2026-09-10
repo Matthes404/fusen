@@ -1,0 +1,19 @@
+services:
+  fusen:
+    build: .
+    image: ghcr.io/matthes404/fusen-server:latest
+    container_name: fusen-server
+    restart: unless-stopped
+    ports:
+      # Nur lokal erreichbar. Nach außen gehört ein Reverse-Proxy mit HTTPS
+      # davor – der Zugangscode hat im Klartext nichts im Netz verloren.
+      - "127.0.0.1:8090:8090"
+    environment:
+      # Leer lassen, dann erzeugt der erste Start einen Code und schreibt ihn
+      # ins Log: docker compose logs fusen
+      FUSEN_ACCESS_CODE: ${FUSEN_ACCESS_CODE:-}
+    volumes:
+      - fusen_data:/pb/pb_data
+
+volumes:
+  fusen_data:

@@ -1,0 +1,136 @@
+name: CI
+
+# Jeder Push und jeder Pull Request wird geprüft.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.3
+
+jobs:
+  app:
+    name: App prüfen
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Pakete holen
+        run: flutter pub get
+
+      - name: Format
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyse
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test
+
+      - name: Erzeugter Code ist aktuell
+        # database.g.dart liegt im Repository, damit ein frischer Klon sofort
+        # baut. Diese Prüfung fängt ab, dass jemand tables.dart ändert und
+        # das Erzeugen vergisst.
+        run: |
+          dart run build_runner build
+          git diff --exit-code -- lib/src/data/db/database.g.dart
+
+  server:
+    name: Server-Image bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Image bauen (ohne zu veröffentlichen)
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: false
+          load: true
+          tags: fusen-server:ci
+
+      - name: Sync-Vertrag prüfen
+        run: |
+          set -euo pipefail
+
+          docker run -d --name fusen-ci \
+            -e FUSEN_ACCESS_CODE=ci-zugangscode \
+            -p 8090:8090 fusen-server:ci
+
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8090/api/health > /dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8090/api/health > /dev/null
+
+          auth=http://127.0.0.1:8090/api/collections/access/auth-with-password
+          notes=http://127.0.0.1:8090/api/collections/notes/records
+          id=aaaaaaaabbbbccccddddeeeeffff0001
+
+          echo '1) Anmeldung mit dem richtigen Zugangscode'
+          token=$(curl -fsS -X POST "$auth" -H 'Content-Type: application/json' \
+            -d '{"identity":"owner@fusen.local","password":"ci-zugangscode"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+
+          echo '2) Falscher Zugangscode wird abgewiesen'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$auth" \
+            -H 'Content-Type: application/json' \
+            -d '{"identity":"owner@fusen.local","password":"falscher-code"}')" = 400
+
+          echo '3) Zettel mit geräteseitiger UUID als ID anlegen'
+          curl -fsS -o /dev/null -X POST "$notes" -H "Authorization: $token" \
+            -H 'Content-Type: application/json' -d "{
+              \"id\": \"$id\", \"type\": \"idea\", \"status\": \"open\",
+              \"body\": \"CI\",
+              \"created_at\": \"2026-01-01T00:00:00.000Z\",
+              \"updated_at\": \"2026-01-01T00:00:00.000Z\"}"
+
+          echo '4) Angemeldet ist der Zettel sichtbar'
+          test "$(curl -fsS "$notes" -H "Authorization: $token" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["totalItems"])')" = 1
+
+          echo '5) Ohne Anmeldung nicht'
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$notes/$id")" = 404
+          test "$(curl -fsS "$notes" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["totalItems"])')" = 0
+
+          echo '6) Hart löschen ist verboten – Löschungen reisen als deleted_at'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$notes/$id" \
+            -H "Authorization: $token")" = 403
+
+      - name: App gleicht gegen den echten Server ab
+        # Die Attrappe in sync_service_test.dart prüft die Logik; hier geht
+        # es darum, dass die App und PocketBase wirklich dieselbe Sprache
+        # sprechen – Feldnamen, Zeitformate, ID-Länge, Filtersyntax.
+        working-directory: app
+        env:
+          FUSEN_TEST_SERVER: http://127.0.0.1:8090
+          FUSEN_TEST_CODE: ci-zugangscode
+        run: |
+          flutter pub get
+          flutter test test/pocketbase_sync_test.dart
+
+      - name: Log bei Fehlschlag
+        if: failure()
+        run: docker logs fusen-ci || true
