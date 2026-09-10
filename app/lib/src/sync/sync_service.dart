@@ -37,6 +37,23 @@ class SyncOutcome {
   bool get isSuccess => status == SyncStatus.success;
 }
 
+/// Sicherheitsabstand beim Fortschreiben des Sync-Cursors.
+///
+/// Der Cursor ist ein Zeitstempel, und daran können zwei Dinge vorbeirutschen:
+///
+/// * ein Datensatz, der auf dieselbe Millisekunde fällt wie der Cursor, aber
+///   erst nach unserer Abfrage festgeschrieben wurde – `updated > cursor`
+///   würde ihn nie sehen;
+/// * ein Datensatz, der zwischen zwei Abfragen desselben Durchlaufs
+///   geschrieben wird. Projekte und Zettel werden nacheinander geholt; schiebt
+///   ein anderes Gerät genau dazwischen erst ein Projekt und dann einen
+///   Zettel, käme der Zettel an und das Projekt nicht.
+///
+/// Ein paar Sekunden Überlappung holen im Zweifel ein paar Datensätze
+/// doppelt. Das kostet Bandbreite, aber nichts sonst: das Zusammenführen ist
+/// idempotent. Ein übersprungener Datensatz wäre dagegen für immer weg.
+const Duration syncCursorOverlap = Duration(seconds: 5);
+
 /// Gleicht die lokale Datenbank mit dem Server ab.
 ///
 /// Ablauf: erst schieben, dann holen. Dadurch kommen eigene Änderungen im
@@ -152,7 +169,7 @@ class SyncService {
 
     if (projects.isEmpty && notes.isEmpty) return 0;
 
-    final cursor = await _backend.push(
+    await _backend.push(
       projects: projects.map(SyncProject.fromRow).toList(),
       notes: notes.map(SyncNote.fromRow).toList(),
     );
@@ -166,7 +183,9 @@ class SyncService {
       }
     });
 
-    await _advanceCursor(cursor);
+    // Der Cursor bleibt, wo er ist: ihn hier auf „jetzt“ zu stellen würde
+    // das anschließende Holen alles überspringen lassen, was ein anderes
+    // Gerät vor unserem Hochladen geschrieben hat.
     return projects.length + notes.length;
   }
 
@@ -263,8 +282,9 @@ class SyncService {
 
   Future<void> _advanceCursor(DateTime? candidate) async {
     if (candidate == null) return;
+    final next = candidate.subtract(syncCursorOverlap);
     final current = await _settings.readDateTime(SettingKeys.lastPulledAt);
-    if (current != null && !candidate.isAfter(current)) return;
-    await _settings.writeDateTime(SettingKeys.lastPulledAt, candidate);
+    if (current != null && !next.isAfter(current)) return;
+    await _settings.writeDateTime(SettingKeys.lastPulledAt, next);
   }
 }

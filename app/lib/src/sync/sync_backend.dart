@@ -66,9 +66,12 @@ abstract class SyncBackend {
   /// Alle Änderungen, die nach [since] auf dem Server passiert sind.
   Future<RemoteBatch> pull({DateTime? since});
 
-  /// Schiebt lokale Änderungen hoch und liefert den Serverzeitstempel des
-  /// zuletzt geschriebenen Datensatzes.
-  Future<DateTime?> push({
+  /// Schiebt lokale Änderungen hoch.
+  ///
+  /// Bewusst ohne Rückgabe: den Cursor stellt allein [pull] vor. Würde das
+  /// Hochladen ihn auf „jetzt“ setzen, überspränge das nächste Holen alles,
+  /// was ein anderes Gerät vorher geschrieben hat.
+  Future<void> push({
     List<SyncProject> projects = const [],
     List<SyncNote> notes = const [],
   });

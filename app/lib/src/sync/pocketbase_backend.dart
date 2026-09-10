@@ -62,34 +62,20 @@ class PocketBaseSyncBackend implements SyncBackend {
   }
 
   @override
-  Future<DateTime?> push({
+  Future<void> push({
     List<SyncProject> projects = const [],
     List<SyncNote> notes = const [],
   }) async {
     final client = _requireClient();
-    DateTime? latest;
 
     // Projekte zuerst: sonst zeigt ein Zettel kurzzeitig auf ein Projekt,
     // das der Server noch nicht kennt.
     for (final project in projects) {
-      final record = await _upsert(
-        client,
-        projectsCollection,
-        project.id,
-        project.toJson(),
-      );
-      latest = _laterOf(latest, _updatedOf(record));
+      await _upsert(client, projectsCollection, project.id, project.toJson());
     }
     for (final note in notes) {
-      final record = await _upsert(
-        client,
-        notesCollection,
-        note.id,
-        note.toJson(),
-      );
-      latest = _laterOf(latest, _updatedOf(record));
+      await _upsert(client, notesCollection, note.id, note.toJson());
     }
-    return latest;
   }
 
   /// PocketBase kennt kein Upsert, also: anlegen, und bei „gibt es schon“

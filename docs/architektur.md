@@ -126,6 +126,20 @@ Zusammenführen ist idempotent, und wir sparen einen zweiten Cursor für
 Datensatzes – bewusst die Uhr des Servers. Bei der Uhr des Geräts würde ein
 falsch gestelltes Handy Änderungen überspringen.
 
+Zwei Feinheiten, die sonst still Daten verlieren:
+
+* **Nur das Holen stellt den Cursor vor, nie das Schieben.** Setzte das
+  Hochladen ihn auf „jetzt“, überspränge das anschließende Holen im selben
+  Durchlauf alles, was ein anderes Gerät vorher geschrieben hat – und zwar für
+  immer, weil der Cursor nie wieder zurückgeht.
+* **Ein paar Sekunden Überlappung** (`syncCursorOverlap`). Ein Zeitstempel als
+  Cursor hat zwei Lücken: ein Datensatz, der auf dieselbe Millisekunde fällt
+  wie der Cursor, aber erst nach unserer Abfrage festgeschrieben wurde; und
+  einer, der zwischen den beiden Abfragen eines Durchlaufs entsteht – Projekte
+  und Zettel werden nacheinander geholt. Die Überlappung holt im Zweifel ein
+  paar Datensätze doppelt; das Zusammenführen ist idempotent, ein
+  übersprungener Datensatz wäre für immer weg.
+
 **IDs:** PocketBase erlaubt eigene Datensatz-IDs aus `[a-z0-9]` mit mindestens
 15 Zeichen. Ein UUID ohne Bindestriche passt genau, also ist die Zuordnung
 lokale ID ↔ Server-ID eine reine Rechnung ohne Mapping-Tabelle.
@@ -178,8 +192,14 @@ geschützt.
 |---|---|
 | `capture_syntax_test.dart` | Kurzbefehle, inklusive der Fälle, in denen `@`, `!` und `#` *keine* Kurzbefehle sind |
 | `note_rules_test.dart` | Zettel-Regeln, Suche, Tombstones – gegen eine echte SQLite-Datenbank im Speicher |
-| `sync_service_test.dart` | Hochladen, Herunterladen, Konflikte, Fehlerfälle – gegen eine Server-Attrappe |
+| `sync_service_test.dart` | Hochladen, Herunterladen, Konflikte, Cursor-Fallen, Fehlerfälle – gegen eine Server-Attrappe |
 | `app_test.dart` | Die echte App, von der Schnelleingabe bis zum abgehakten Schritt |
+| `pocketbase_sync_test.dart` | Abgleich gegen ein echtes PocketBase. Wird übersprungen, solange keins läuft; die CI startet dafür den Container. |
+
+Die Attrappe prüft, ob der Sync *denkt* wie gedacht; der Lauf gegen ein
+echtes PocketBase prüft, ob App und Server dieselbe Sprache sprechen –
+Feldnamen, Zeitformate, erlaubte ID-Länge, Filtersyntax. Das eine ersetzt
+das andere nicht.
 
 Eine Eigenheit von Widget-Tests: `flutter_test` friert die Zeit ein, und
 drift meldet Stream-Ergebnisse über einen Timer. Ein `await stream.first`

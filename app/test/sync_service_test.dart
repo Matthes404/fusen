@@ -70,7 +70,7 @@ class FakeSyncBackend implements SyncBackend {
   }
 
   @override
-  Future<DateTime?> push({
+  Future<void> push({
     List<SyncProject> projects = const [],
     List<SyncNote> notes = const [],
   }) async {
@@ -82,7 +82,6 @@ class FakeSyncBackend implements SyncBackend {
     for (final note in notes) {
       this.notes[note.id] = (note, stamp);
     }
-    return stamp;
   }
 
   /// Simuliert ein anderes Gerät, das etwas hochgeladen hat.
@@ -263,6 +262,63 @@ void main() {
       await sync.syncNow();
 
       expect(await notes.search(terms: ['ähnliches']).first, hasLength(1));
+    });
+
+    test('holt fremde Änderungen, während eigene hochgehen', () async {
+      // Der Reihenfolge wegen heikel: erst schieben, dann holen. Wenn das
+      // Hochladen den Cursor vorstellt, überspringt das anschließende Holen
+      // alles, was das andere Gerät vorher geschrieben hat – und zwar für
+      // immer.
+      backend.seedNote(
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000004',
+          updatedAt: DateTime.utc(2026, 5, 1, 11, 30),
+          body: 'vom anderen Gerät',
+        ),
+        at: DateTime.utc(2026, 5, 1, 11, 30),
+      );
+      await notes.create(body: 'von hier');
+
+      final outcome = await sync.syncNow();
+
+      expect(outcome.pushed, 1);
+      expect(
+        await notes.findById('aaaaaaaa-0000-4000-8000-000000000004'),
+        isNotNull,
+        reason: 'Die fremde Änderung wurde übersprungen.',
+      );
+    });
+
+    test('verliert nichts, was auf dieselbe Millisekunde fällt', () async {
+      // Zwei Geräte schreiben im selben Augenblick. Der zweite Datensatz
+      // trägt denselben Serverzeitstempel wie der Cursor – ohne
+      // Überlappung würde `updated > cursor` ihn nie wieder zeigen.
+      final sameInstant = DateTime.utc(2026, 5, 1, 11, 30);
+      backend.seedNote(
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000005',
+          updatedAt: sameInstant,
+          body: 'erster',
+        ),
+        at: sameInstant,
+      );
+
+      expect((await sync.syncNow()).pulled, 1);
+
+      backend.seedNote(
+        remoteNote(
+          id: 'aaaaaaaa-0000-4000-8000-000000000006',
+          updatedAt: sameInstant,
+          body: 'zweiter',
+        ),
+        at: sameInstant,
+      );
+
+      expect((await sync.syncNow()).pulled, 1);
+      expect(
+        await notes.findById('aaaaaaaa-0000-4000-8000-000000000006'),
+        isNotNull,
+      );
     });
 
     test('holt beim zweiten Mal nur Neues', () async {
