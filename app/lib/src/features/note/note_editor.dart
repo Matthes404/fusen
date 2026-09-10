@@ -8,17 +8,22 @@ import '../../data/models/note_status.dart';
 import '../../data/models/note_type.dart';
 import '../../data/repositories/note_repository.dart';
 import '../../ui/note_style.dart';
+import '../../ui/palette.dart';
+import '../../ui/tokens.dart';
+import '../../ui/widgets/labels.dart';
 
 /// Öffnet den Zettel zum Bearbeiten – auf breiten Fenstern als Dialog,
 /// auf dem Handy als Blatt von unten.
 Future<void> showNoteEditor(BuildContext context, NoteRow note) {
-  final wide = MediaQuery.sizeOf(context).width >= 700;
+  final wide = MediaQuery.sizeOf(context).width >= compactWidth;
   if (wide) {
     return showDialog<void>(
       context: context,
+      barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.46),
       builder: (_) => Dialog(
+        clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 680),
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 700),
           child: NoteEditor(noteId: note.id),
         ),
       ),
@@ -28,6 +33,7 @@ Future<void> showNoteEditor(BuildContext context, NoteRow note) {
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    showDragHandle: true,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.92,
       child: NoteEditor(noteId: note.id),
@@ -91,7 +97,6 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
   }
 
   Widget _buildForm(BuildContext context, NoteRow note) {
-    final theme = Theme.of(context);
     final locked = !isContentEditable(note, DateTime.now().toUtc());
     final projects = ref.watch(projectsProvider).value ?? const [];
 
@@ -100,38 +105,39 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
       children: [
         _EditorHeader(
           note: note,
+          type: _type,
           onClose: () => Navigator.of(context).maybePop(),
         ),
-        const Divider(height: 1),
+        Divider(height: 1, color: context.paper.hairline),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(
+              Insets.xl,
+              Insets.lg,
+              Insets.xl,
+              Insets.xl,
+            ),
             children: [
               if (locked)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: Insets.lg),
                   child: _LockedBanner(createdAt: note.createdAt),
                 ),
-              Text('Typ', style: theme.textTheme.labelMedium),
-              const SizedBox(height: 6),
+              const _FieldLabel('Typ'),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
                   for (final type in NoteType.sectionOrder)
-                    ChoiceChip(
-                      label: Text(type.label),
-                      avatar: Icon(type.icon, size: 16),
+                    _TypeChoice(
+                      type: type,
                       selected: _type == type,
-                      onSelected: locked
-                          ? null
-                          : (_) => setState(() => _type = type),
+                      onTap: locked ? null : () => setState(() => _type = type),
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Text('Projekt', style: theme.textTheme.labelMedium),
-              const SizedBox(height: 6),
+              const SizedBox(height: Insets.xl),
+              const _FieldLabel('Projekt'),
               DropdownButtonFormField<String?>(
                 initialValue: _projectId,
                 items: [
@@ -144,7 +150,7 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                 ],
                 onChanged: (value) => setState(() => _projectId = value),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: Insets.xl),
               TextField(
                 controller: _titleController,
                 enabled: !locked,
@@ -153,7 +159,7 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                 ),
                 textInputAction: TextInputAction.next,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: Insets.md),
               TextField(
                 controller: _bodyController,
                 enabled: !locked,
@@ -164,7 +170,7 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                   alignLabelWithHint: true,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: Insets.md),
               TextField(
                 controller: _tagsController,
                 enabled: !locked,
@@ -174,7 +180,7 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                 ),
               ),
               if (_type.hasAnswer) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: Insets.md),
                 TextField(
                   controller: _answerController,
                   enabled: !locked,
@@ -188,9 +194,8 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                 ),
               ],
               if (_type.supportsPriority) ...[
-                const SizedBox(height: 16),
-                Text('Priorität', style: theme.textTheme.labelMedium),
-                const SizedBox(height: 6),
+                const SizedBox(height: Insets.xl),
+                const _FieldLabel('Priorität'),
                 Wrap(
                   spacing: 6,
                   children: [
@@ -207,9 +212,8 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                   ],
                 ),
               ],
-              const SizedBox(height: 16),
-              Text('Status', style: theme.textTheme.labelMedium),
-              const SizedBox(height: 6),
+              const SizedBox(height: Insets.xl),
+              const _FieldLabel('Status'),
               Wrap(
                 spacing: 6,
                 children: [
@@ -224,9 +228,14 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
             ],
           ),
         ),
-        const Divider(height: 1),
+        Divider(height: 1, color: context.paper.hairline),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          padding: const EdgeInsets.fromLTRB(
+            Insets.md,
+            Insets.md,
+            Insets.md,
+            Insets.md,
+          ),
           child: Row(
             children: [
               IconButton(
@@ -250,7 +259,7 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
                 onPressed: () => Navigator.of(context).maybePop(),
                 child: const Text('Abbrechen'),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Insets.sm),
               FilledButton(
                 onPressed: locked ? null : () => _save(note),
                 child: const Text('Speichern'),
@@ -291,6 +300,10 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
             child: const Text('Abbrechen'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Löschen'),
           ),
@@ -334,29 +347,122 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
   }
 }
 
+/// Überschrift über einem Feld – klein und gesperrt, damit sie das Feld
+/// ankündigt statt mit ihm zu konkurrieren.
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: Insets.sm),
+    child: SectionLabel(text),
+  );
+}
+
+/// Ein Typ zur Auswahl – in seiner eigenen Farbe, wenn er gewählt ist.
+class _TypeChoice extends StatelessWidget {
+  const _TypeChoice({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final NoteType type;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = type.color(theme.colorScheme);
+    final enabled = onTap != null;
+
+    return Material(
+      color: selected
+          ? accent.withValues(alpha: 0.14)
+          : theme.colorScheme.surfaceContainer,
+      borderRadius: Radii.pillAll,
+      child: InkWell(
+        borderRadius: Radii.pillAll,
+        onTap: onTap,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Insets.md,
+              vertical: Insets.sm,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: Radii.pillAll,
+              border: Border.all(
+                color: selected
+                    ? accent.withValues(alpha: 0.45)
+                    : context.paper.paperBorder,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  type.icon,
+                  size: 15,
+                  color: selected ? accent : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  type.label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: selected ? accent : theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EditorHeader extends StatelessWidget {
-  const _EditorHeader({required this.note, required this.onClose});
+  const _EditorHeader({
+    required this.note,
+    required this.type,
+    required this.onClose,
+  });
 
   final NoteRow note;
+  final NoteType type;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      padding: const EdgeInsets.fromLTRB(
+        Insets.xl,
+        Insets.md,
+        Insets.md,
+        Insets.md,
+      ),
       child: Row(
         children: [
-          Icon(
-            note.type.icon,
-            size: 20,
-            color: note.type.color(theme.colorScheme),
-          ),
-          const SizedBox(width: 8),
+          TypeBadge(type: type, size: 30),
+          const SizedBox(width: Insets.md),
           Expanded(
-            child: Text(
-              'Zettel bearbeiten',
-              style: theme.textTheme.titleMedium,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Zettel bearbeiten', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 1),
+                Text(
+                  statusLabel(type, note.status),
+                  style: theme.textTheme.labelMedium,
+                ),
+              ],
             ),
           ),
           IconButton(
@@ -378,16 +484,20 @@ class _LockedBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = NoteType.log.color(theme.colorScheme);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Insets.md),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: Radii.smAll,
+        border: Border.all(color: context.paper.paperBorder),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.lock_clock, size: 18),
-          const SizedBox(width: 10),
+          Icon(Icons.lock_clock, size: 18, color: accent),
+          const SizedBox(width: Insets.md),
           Expanded(
             child: Text(
               'Log-Einträge sind nach 24 Stunden festgeschrieben. '

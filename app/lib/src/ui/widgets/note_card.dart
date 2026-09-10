@@ -8,7 +8,10 @@ import '../../data/models/note_status.dart';
 import '../../data/models/note_type.dart';
 import '../../features/note/note_editor.dart';
 import '../note_style.dart';
+import '../tokens.dart';
+import 'labels.dart';
 import 'markdown_text.dart';
+import 'paper.dart';
 
 final DateFormat _timestampFormat = DateFormat('dd.MM.yyyy, HH:mm');
 
@@ -19,7 +22,9 @@ String formatTimestamp(DateTime value) =>
 ///
 /// Dieselbe Karte für alle sieben Typen: was der Typ kann, entscheidet, was
 /// zu sehen ist – Häkchen bei Schritten, Priorität bei Anforderungen,
-/// Zeitstempel beim Log.
+/// Zeitstempel beim Log. Die Kennfarbe steht als Streifen an der Kante und
+/// als Hauch auf dem Papier, damit ein Stapel schon aus dem Augenwinkel
+/// sortiert aussieht.
 class NoteCard extends ConsumerWidget {
   const NoteCard({
     required this.note,
@@ -38,86 +43,95 @@ class NoteCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final done = note.status != NoteStatus.open;
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => showNoteEditor(context, note),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(dense ? 8 : 12, 8, 4, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Leading(note: note),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (note.title != null && note.title!.isNotEmpty)
-                      Text(
+    return PaperCard(
+      onTap: () => showNoteEditor(context, note),
+      accent: note.type.color(scheme),
+      // Abgehakte Zettel treten zurück: keine Einfärbung mehr.
+      wash: done ? null : note.type.wash(scheme),
+      padding: EdgeInsets.fromLTRB(
+        dense ? Insets.sm : Insets.md,
+        dense ? Insets.sm : Insets.md,
+        Insets.xs,
+        dense ? Insets.sm : Insets.md,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Leading(note: note, dense: dense),
+          const SizedBox(width: Insets.md),
+          Expanded(
+            child: Opacity(
+              opacity: done ? 0.6 : 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (note.title != null && note.title!.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: note.body.isEmpty ? 0 : Insets.xs,
+                      ),
+                      child: Text(
                         note.title!,
                         style: theme.textTheme.titleSmall?.copyWith(
                           decoration: done ? TextDecoration.lineThrough : null,
+                          decorationColor: scheme.onSurfaceVariant,
                         ),
                       ),
-                    if (note.body.isNotEmpty)
-                      Opacity(
-                        opacity: done ? 0.55 : 1,
-                        child: MarkdownText(note.body),
-                      ),
-                    if (note.answer != null && note.answer!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: _AnswerBlock(answer: note.answer!),
-                      ),
-                    _Meta(note: note, showProject: showProject),
-                  ],
-                ),
+                    ),
+                  if (note.body.isNotEmpty)
+                    MarkdownText(note.body, selectable: false),
+                  if (note.answer != null && note.answer!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: Insets.sm),
+                      child: _AnswerBlock(answer: note.answer!),
+                    ),
+                  _Meta(note: note, showProject: showProject),
+                ],
               ),
-              _NoteMenu(note: note),
-            ],
+            ),
           ),
-        ),
+          _NoteMenu(note: note),
+        ],
       ),
     );
   }
 }
 
 class _Leading extends ConsumerWidget {
-  const _Leading({required this.note});
+  const _Leading({required this.note, required this.dense});
 
   final NoteRow note;
+  final bool dense;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-
     if (note.type.isCheckable) {
       return SizedBox(
-        width: 28,
-        height: 28,
-        child: Checkbox(
-          value: note.status == NoteStatus.done,
-          tristate: false,
-          onChanged: (checked) => ref
-              .read(noteRepositoryProvider)
-              .setStatus(
-                note.id,
-                checked == true ? NoteStatus.done : NoteStatus.open,
-              ),
+        width: 24,
+        height: 24,
+        child: Center(
+          child: Checkbox(
+            value: note.status == NoteStatus.done,
+            tristate: false,
+            onChanged: (checked) => ref
+                .read(noteRepositoryProvider)
+                .setStatus(
+                  note.id,
+                  checked == true ? NoteStatus.done : NoteStatus.open,
+                ),
+          ),
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Icon(note.type.icon, size: 18, color: note.type.color(scheme)),
-    );
+    return TypeBadge(type: note.type, size: dense ? 24 : 28);
   }
 }
 
+/// Die Antwort auf eine Frage – abgesetzt, aber am Zettel dran.
 class _AnswerBlock extends StatelessWidget {
   const _AnswerBlock({required this.answer});
 
@@ -126,19 +140,31 @@ class _AnswerBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = NoteType.question.color(theme.colorScheme);
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.fromLTRB(Insets.md, Insets.sm, Insets.md, 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: Radii.smAll,
+        border: Border(left: BorderSide(color: accent, width: 2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Antwort', style: theme.textTheme.labelSmall),
-          const SizedBox(height: 2),
-          MarkdownText(answer),
+          Row(
+            children: [
+              Icon(Icons.subdirectory_arrow_right, size: 13, color: accent),
+              const SizedBox(width: Insets.xs),
+              Text(
+                'Antwort',
+                style: theme.textTheme.labelSmall?.copyWith(color: accent),
+              ),
+            ],
+          ),
+          const SizedBox(height: Insets.xs),
+          MarkdownText(answer, selectable: false),
         ],
       ),
     );
@@ -153,64 +179,53 @@ class _Meta extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final chips = <Widget>[];
 
     if (note.priority != null) {
+      final priority = note.priority!;
       chips.add(
-        _MetaChip(label: note.priority!.label, color: note.priority!.color),
+        MetaChip(
+          label: priority.label,
+          icon: Icons.flag_outlined,
+          color: priority.isEmphasised ? priority.color(scheme) : null,
+        ),
       );
     }
     if (note.type == NoteType.log) {
-      chips.add(_MetaChip(label: formatTimestamp(note.createdAt)));
+      chips.add(
+        MetaChip(
+          label: formatTimestamp(note.createdAt),
+          icon: Icons.schedule,
+          mono: true,
+        ),
+      );
     }
     if (showProject) {
       final projects = ref.watch(projectsProvider).value ?? const [];
       final project = projects.where((p) => p.id == note.projectId).firstOrNull;
       chips.add(
-        _MetaChip(
+        MetaChip(
           label: project?.name ?? 'Inbox',
+          icon: project == null ? Icons.inbox_outlined : Icons.circle,
           color: project == null ? null : Color(project.color),
         ),
       );
     }
     for (final tag in note.tags) {
-      chips.add(_MetaChip(label: '#$tag'));
+      chips.add(MetaChip(label: '#$tag'));
     }
     if (note.archivedAt != null) {
-      chips.add(const _MetaChip(label: 'archiviert'));
+      chips.add(
+        const MetaChip(label: 'archiviert', icon: Icons.inventory_2_outlined),
+      );
     }
 
     if (chips.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Wrap(spacing: 6, runSpacing: 4, children: chips),
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label, this.color});
-
-  final String label;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tint = color ?? theme.colorScheme.outline;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color == null ? theme.colorScheme.onSurfaceVariant : tint,
-        ),
-      ),
+      padding: const EdgeInsets.only(top: Insets.sm),
+      child: Wrap(spacing: 6, runSpacing: Insets.xs, children: chips),
     );
   }
 }
@@ -225,8 +240,9 @@ class _NoteMenu extends ConsumerWidget {
     final repository = ref.read(noteRepositoryProvider);
 
     return MenuAnchor(
+      alignmentOffset: const Offset(-140, 0),
       builder: (context, controller, child) => IconButton(
-        icon: const Icon(Icons.more_vert, size: 18),
+        icon: const Icon(Icons.more_horiz, size: 18),
         visualDensity: VisualDensity.compact,
         tooltip: 'Aktionen',
         onPressed: () =>
@@ -243,7 +259,11 @@ class _NoteMenu extends ConsumerWidget {
           menuChildren: [
             for (final type in NoteType.sectionOrder)
               MenuItemButton(
-                leadingIcon: Icon(type.icon, size: 18),
+                leadingIcon: Icon(
+                  type.icon,
+                  size: 18,
+                  color: type.color(Theme.of(context).colorScheme),
+                ),
                 onPressed: type == note.type
                     ? null
                     : () => _changeType(context, ref, type),
@@ -256,6 +276,7 @@ class _NoteMenu extends ConsumerWidget {
           leadingIcon: const Icon(Icons.drive_file_move_outline, size: 18),
           menuChildren: [
             MenuItemButton(
+              leadingIcon: const Icon(Icons.inbox_outlined, size: 18),
               onPressed: note.projectId == null
                   ? null
                   : () => repository.moveToProject(note.id, null),
@@ -263,6 +284,7 @@ class _NoteMenu extends ConsumerWidget {
             ),
             for (final project in ref.watch(projectsProvider).value ?? const [])
               MenuItemButton(
+                leadingIcon: _ProjectDot(color: Color(project.color)),
                 onPressed: project.id == note.projectId
                     ? null
                     : () => repository.moveToProject(note.id, project.id),
@@ -310,4 +332,21 @@ class _NoteMenu extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text('$error')));
     }
   }
+}
+
+/// Der Farbpunkt eines Projekts – im Menü an der Stelle des Symbols.
+class _ProjectDot extends StatelessWidget {
+  const _ProjectDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(4),
+    child: Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    ),
+  );
 }

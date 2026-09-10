@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../data/repositories/project_repository.dart';
+import '../../ui/tokens.dart';
 import 'project_archive_page.dart';
 
 /// Projekt umbenennen, einfärben, archivieren, löschen.
@@ -29,24 +30,18 @@ class ProjectMenu extends ConsumerWidget {
           onPressed: () => renameProject(context, ref, project),
           child: const Text('Umbenennen'),
         ),
-        SubmenuButton(
-          leadingIcon: const Icon(Icons.palette_outlined, size: 18),
-          menuChildren: [
-            for (final color in projectPalette)
-              MenuItemButton(
-                leadingIcon: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: Color(color),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                onPressed: () => repository.setColor(project.id, color),
-                child: Text(color == project.color ? 'Aktuell' : ' '),
-              ),
-          ],
-          child: const Text('Farbe'),
+        MenuItemButton(
+          leadingIcon: Container(
+            width: 16,
+            height: 16,
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: Color(project.color),
+              shape: BoxShape.circle,
+            ),
+          ),
+          onPressed: () => _pickColor(context, ref),
+          child: const Text('Farbe …'),
         ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.inventory_2_outlined, size: 18),
@@ -85,6 +80,38 @@ class ProjectMenu extends ConsumerWidget {
     );
   }
 
+  Future<void> _pickColor(BuildContext context, WidgetRef ref) async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Farbe für „${project.name}“'),
+        content: SizedBox(
+          width: 264,
+          child: Wrap(
+            spacing: Insets.md,
+            runSpacing: Insets.md,
+            children: [
+              for (final color in projectPalette)
+                _Swatch(
+                  color: Color(color),
+                  selected: color == project.color,
+                  onTap: () => Navigator.of(context).pop(color),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    await ref.read(projectRepositoryProvider).setColor(project.id, picked);
+  }
+
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -100,6 +127,10 @@ class ProjectMenu extends ConsumerWidget {
             child: const Text('Abbrechen'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Löschen'),
           ),
@@ -108,6 +139,49 @@ class ProjectMenu extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(projectRepositoryProvider).delete(project.id);
+  }
+}
+
+/// Ein Farbfeld in der Auswahl.
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        borderRadius: Radii.pillAll,
+        onTap: onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.18),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? color : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+        ),
+      ),
+    );
   }
 }
 

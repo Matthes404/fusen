@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../ui/palette.dart';
+import '../../ui/tokens.dart';
 import '../capture/capture_sheet.dart';
 import '../inbox/inbox_view.dart';
 import '../project/project_view.dart';
@@ -13,6 +15,9 @@ import 'project_sidebar.dart';
 
 /// Ab dieser Breite passen Liste und Inhalt nebeneinander.
 const double twoPaneBreakpoint = 900;
+
+/// Breite der Seitenspalte.
+const double sidebarWidth = 268;
 
 /// Das Grundgerüst der App.
 ///
@@ -54,15 +59,30 @@ class HomeShellState extends ConsumerState<HomeShell> {
       body: Row(
         children: [
           SizedBox(
-            width: 264,
-            child: ProjectSidebar(
-              selected: _selected,
-              onSelect: _select,
-              onCapture: openCapture,
+            width: sidebarWidth,
+            child: SafeArea(
+              right: false,
+              child: ProjectSidebar(
+                selected: _selected,
+                onSelect: _select,
+                onCapture: openCapture,
+              ),
             ),
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: _detailFor(_selected)),
+          VerticalDivider(width: 1, color: context.paper.hairline),
+          // Der Wechsel zwischen zwei Projekten blendet über, damit klar
+          // ist, dass sich der ganze Bereich austauscht und nicht nur ein
+          // paar Zeilen anders stehen.
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: Motion.base,
+              switchInCurve: Motion.standard,
+              child: KeyedSubtree(
+                key: ValueKey(_selected),
+                child: _detailFor(_selected),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -70,18 +90,20 @@ class HomeShellState extends ConsumerState<HomeShell> {
 
   Widget _buildNarrow(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.paper.sidebar,
       body: SafeArea(
+        bottom: false,
         child: ProjectSidebar(
           selected: _selected,
           onSelect: _open,
           onCapture: openCapture,
-          showSelection: false,
+          wide: false,
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Zettel ablegen',
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: openCapture,
-        child: const Icon(Icons.edit_outlined),
+        icon: const Icon(Icons.add),
+        label: const Text('Zettel ablegen'),
       ),
     );
   }

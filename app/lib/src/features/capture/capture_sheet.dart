@@ -6,6 +6,10 @@ import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../data/models/note_type.dart';
 import '../../ui/note_style.dart';
+import '../../ui/palette.dart';
+import '../../ui/theme.dart';
+import '../../ui/tokens.dart';
+import '../../ui/widgets/keycap.dart';
 import 'capture_syntax.dart';
 
 /// Öffnet die Schnelleingabe.
@@ -20,7 +24,7 @@ Future<String?> showCaptureSheet(
 }) {
   return showDialog<String>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.46),
     builder: (_) => CaptureDialog(projectId: projectId, type: type),
   );
 }
@@ -70,70 +74,115 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.paper;
     final projects = ref.watch(projectsProvider).value ?? const [];
     final effectiveType = _draft.type ?? widget.type ?? NoteType.idea;
 
     return Dialog(
       alignment: Alignment.topCenter,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 80),
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: Insets.lg,
+        vertical: 72,
+      ),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Focus(
-                onKeyEvent: _onKey,
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  autofocus: true,
-                  minLines: 1,
-                  maxLines: 8,
-                  style: theme.textTheme.titleMedium,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Was ist los? @projekt !typ #tag',
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.paper,
+            borderRadius: Radii.lgAll,
+            border: Border.all(color: tokens.paperBorder),
+            boxShadow: tokens.overlay,
+          ),
+          child: ClipRRect(
+            borderRadius: Radii.lgAll.subtract(
+              const BorderRadius.all(Radius.circular(1)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Der Klebestreifen oben am Block.
+                Container(height: 4, color: fusenSeed),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Insets.xl,
+                    Insets.xl,
+                    Insets.xl,
+                    Insets.lg,
                   ),
-                ),
-              ),
-            ),
-            _Preview(
-              draft: _draft,
-              type: effectiveType,
-              target: _resolveTargetName(projects),
-              suggestion: _targetChosen || _draft.projectQuery != null
-                  ? null
-                  : _projectName(projects, _suggestion),
-              onAcceptSuggestion: _acceptSuggestion,
-              onPickTarget: () => _pickTarget(projects),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Enter speichert · Shift+Enter neue Zeile · Esc bricht ab',
-                      style: theme.textTheme.labelSmall,
+                  child: Focus(
+                    onKeyEvent: _onKey,
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      autofocus: true,
+                      minLines: 1,
+                      maxLines: 8,
+                      // Größer als sonst: das Feld ist der ganze Zweck
+                      // dieses Fensters.
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        height: 1.45,
+                      ),
+                      decoration: InputDecoration(
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        hintText: 'Was ist los? @projekt !typ #tag',
+                        hintStyle: theme.textTheme.titleMedium?.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w400,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Abbrechen'),
+                ),
+                _Preview(
+                  draft: _draft,
+                  type: effectiveType,
+                  target: _resolveTargetName(projects),
+                  suggestion: _targetChosen || _draft.projectQuery != null
+                      ? null
+                      : _projectName(projects, _suggestion),
+                  onAcceptSuggestion: _acceptSuggestion,
+                  onPickTarget: () => _pickTarget(projects),
+                ),
+                Divider(height: 1, color: tokens.hairline),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Insets.lg,
+                    Insets.md,
+                    Insets.md,
+                    Insets.md,
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _draft.isEmpty || _saving ? null : _save,
-                    child: const Text('Ablegen'),
+                  child: Row(
+                    children: [
+                      const Expanded(child: _Shortcuts()),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Abbrechen'),
+                      ),
+                      const SizedBox(width: Insets.sm),
+                      FilledButton(
+                        style: brandButtonStyle(),
+                        onPressed: _draft.isEmpty || _saving ? null : _save,
+                        child: const Text('Ablegen'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -188,15 +237,23 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
       context: context,
       builder: (context) => SimpleDialog(
         title: const Text('Wohin?'),
+        contentPadding: const EdgeInsets.fromLTRB(
+          Insets.sm,
+          Insets.sm,
+          Insets.sm,
+          Insets.md,
+        ),
         children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('Inbox'),
+          _TargetOption(
+            label: 'Inbox',
+            icon: Icons.inbox_outlined,
+            onTap: () => Navigator.of(context).pop(null),
           ),
           for (final project in projects)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(project.id),
-              child: Text(project.name),
+            _TargetOption(
+              label: project.name,
+              color: Color(project.color),
+              onTap: () => Navigator.of(context).pop(project.id),
             ),
         ],
       ),
@@ -239,6 +296,7 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
   }
 }
 
+/// Was die App aus dem Getippten gemacht hat – Ziel, Typ, Schlagworte.
 class _Preview extends StatelessWidget {
   const _Preview({
     required this.draft,
@@ -258,36 +316,175 @@ class _Preview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.fromLTRB(Insets.xl, 0, Insets.xl, Insets.lg),
       child: Wrap(
         spacing: 6,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          ActionChip(
-            avatar: const Icon(Icons.folder_outlined, size: 16),
-            label: Text(target),
-            onPressed: onPickTarget,
+          _Pill(
+            icon: Icons.folder_outlined,
+            label: target,
+            trailing: Icons.unfold_more,
+            onTap: onPickTarget,
           ),
-          Chip(
-            avatar: Icon(
-              type.icon,
-              size: 16,
-              color: type.color(theme.colorScheme),
-            ),
-            label: Text(type.label),
-          ),
-          for (final tag in draft.tags) Chip(label: Text('#$tag')),
+          _Pill(icon: type.icon, label: type.label, color: type.color(scheme)),
+          for (final tag in draft.tags) _Pill(label: '#$tag'),
           if (suggestion != null)
-            ActionChip(
-              avatar: const Icon(Icons.keyboard_tab, size: 16),
-              label: Text('Tab → $suggestion'),
-              onPressed: onAcceptSuggestion,
+            _Pill(
+              label: suggestion!,
+              leading: const Keycap('Tab'),
+              onTap: onAcceptSuggestion,
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Eine Marke in der Vorschau. Anklickbar, wenn [onTap] gesetzt ist.
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    this.icon,
+    this.color,
+    this.onTap,
+    this.leading,
+    this.trailing,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Color? color;
+  final VoidCallback? onTap;
+  final Widget? leading;
+  final IconData? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tint = color ?? theme.colorScheme.onSurfaceVariant;
+    final tokens = context.paper;
+
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (leading != null) ...[leading!, const SizedBox(width: 6)],
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: tint),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: color == null ? theme.colorScheme.onSurface : tint,
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 6),
+            Icon(trailing, size: 13, color: theme.colorScheme.outline),
+          ],
+        ],
+      ),
+    );
+
+    final decorated = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: Radii.pillAll,
+        border: Border.all(
+          color: color == null
+              ? tokens.paperBorder
+              : color!.withValues(alpha: 0.25),
+        ),
+      ),
+      child: content,
+    );
+
+    return Material(
+      color: color == null
+          ? theme.colorScheme.surfaceContainer
+          : color!.withValues(alpha: 0.12),
+      borderRadius: Radii.pillAll,
+      child: onTap == null
+          ? decorated
+          : InkWell(
+              borderRadius: Radii.pillAll,
+              onTap: onTap,
+              child: decorated,
+            ),
+    );
+  }
+}
+
+/// Die drei Tasten, die die Schnelleingabe ausmachen.
+class _Shortcuts extends StatelessWidget {
+  const _Shortcuts();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Wrap(
+      spacing: Insets.md,
+      runSpacing: Insets.xs,
+      children: [
+        KeyHint(keys: ['Enter'], text: 'speichert'),
+        KeyHint(keys: ['Shift', 'Enter'], text: 'neue Zeile'),
+        KeyHint(keys: ['Esc'], text: 'bricht ab'),
+      ],
+    );
+  }
+}
+
+/// Eine Zeile im „Wohin?“-Dialog.
+class _TargetOption extends StatelessWidget {
+  const _TargetOption({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.color,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final IconData? icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      borderRadius: Radii.smAll,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Insets.md,
+          vertical: Insets.md,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              child: icon != null
+                  ? Icon(icon, size: 18)
+                  : Center(
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: Insets.md),
+            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+          ],
+        ),
       ),
     );
   }

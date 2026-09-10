@@ -46,15 +46,40 @@ extension NoteTypeStyle on NoteType {
     NoteType.log => Icons.history,
   };
 
-  Color color(ColorScheme scheme) => switch (this) {
-    NoteType.instruction => const Color(0xFFE5484D),
-    NoteType.step => const Color(0xFF30A46C),
-    NoteType.question => const Color(0xFFFFB224),
-    NoteType.requirement => const Color(0xFF0091FF),
-    NoteType.idea => const Color(0xFF6E56CF),
-    NoteType.reference => const Color(0xFF12A594),
-    NoteType.log => scheme.outline,
-  };
+  /// Die Kennfarbe des Typs.
+  ///
+  /// Zwei Sätze statt einem: dieselbe Farbe, die auf Papier kräftig wirkt,
+  /// leuchtet im Dunkeln viel zu grell. Beide Sätze sind gegen ihren
+  /// Untergrund auf Lesbarkeit geprüft.
+  Color color(ColorScheme scheme) {
+    final light = scheme.brightness == Brightness.light;
+    return switch (this) {
+      NoteType.instruction =>
+        light ? const Color(0xFFBE2B54) : const Color(0xFFFF94B0),
+      NoteType.step =>
+        light ? const Color(0xFF1E7A4C) : const Color(0xFF5FD196),
+      NoteType.question =>
+        light ? const Color(0xFFC2410C) : const Color(0xFFFFA26B),
+      NoteType.requirement =>
+        light ? const Color(0xFF1160B0) : const Color(0xFF7CC0FF),
+      NoteType.idea =>
+        light ? const Color(0xFF6D3FC4) : const Color(0xFFBFAAFF),
+      NoteType.reference =>
+        light ? const Color(0xFF0E7C72) : const Color(0xFF5FD9CC),
+      NoteType.log => scheme.outline,
+    };
+  }
+
+  /// Der Hauch Farbe, den der Zettel selbst bekommt.
+  ///
+  /// Gerade so viel, dass ein Stapel Zettel nach Typ sortiert aussieht,
+  /// ohne dass der Text darauf schlechter zu lesen wäre. Das Log bleibt
+  /// bewusst farblos – ein Protokoll ist Hintergrund, kein Blickfang.
+  Color wash(ColorScheme scheme) {
+    if (this == NoteType.log) return const Color(0x00000000);
+    final strength = scheme.brightness == Brightness.light ? 0.055 : 0.07;
+    return color(scheme).withValues(alpha: strength);
+  }
 }
 
 extension NotePriorityStyle on NotePriority {
@@ -64,11 +89,19 @@ extension NotePriorityStyle on NotePriority {
     NotePriority.could => 'Kann',
   };
 
-  Color get color => switch (this) {
-    NotePriority.must => const Color(0xFFE5484D),
-    NotePriority.should => const Color(0xFFF76B15),
-    NotePriority.could => const Color(0xFF8B8D98),
-  };
+  Color color(ColorScheme scheme) {
+    final light = scheme.brightness == Brightness.light;
+    return switch (this) {
+      NotePriority.must =>
+        light ? const Color(0xFFBE2B54) : const Color(0xFFFF94B0),
+      NotePriority.should =>
+        light ? const Color(0xFFC2410C) : const Color(0xFFFFA26B),
+      NotePriority.could => scheme.onSurfaceVariant,
+    };
+  }
+
+  /// Wie dringlich das aussehen soll: „Muss“ trägt Farbe, „Kann“ nicht.
+  bool get isEmphasised => this != NotePriority.could;
 }
 
 /// Statusbezeichnungen hängen vom Typ ab: eine Anforderung ist „umgesetzt“,
