@@ -8,6 +8,14 @@ loslegst und was beim Einreichen hilft.
 Du brauchst [Flutter](https://docs.flutter.dev/get-started/install) 3.47 oder
 neuer. Für den Server zusätzlich Docker (oder eine PocketBase-Binary).
 
+Auf Linux kommen zwei Systempakete dazu – `libkeybinder-3.0-dev` braucht
+`hotkey_manager` für den globalen Hotkey, und ohne das Paket bricht schon
+CMake ab:
+
+```bash
+sudo apt-get install ninja-build libgtk-3-dev libkeybinder-3.0-dev
+```
+
 ```bash
 git clone https://github.com/matthes404/fusen.git
 cd fusen/app

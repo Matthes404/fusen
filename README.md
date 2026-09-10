@@ -60,6 +60,12 @@ dart run build_runner build      # erzeugt den drift-Code
 flutter run                      # -d linux | windows | macos | android | ios
 ```
 
+Auf Linux vorher noch:
+
+```bash
+sudo apt-get install ninja-build libgtk-3-dev libkeybinder-3.0-dev
+```
+
 Prüfen, was die CI auch prüft:
 
 ```bash
