@@ -1,0 +1,16 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# PocketBase-Daten (nie ins Repo)
+server/pb_data/
