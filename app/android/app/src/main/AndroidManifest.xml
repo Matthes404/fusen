@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Für den Abgleich mit dem eigenen Sync-Server. Ohne Server
+         läuft Fusen rein lokal; die Berechtigung muss aber im
+         Release-Manifest stehen, sonst kann die App gar nicht erst
+         nachfragen. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="fusen"
+        android:label="Fusen"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

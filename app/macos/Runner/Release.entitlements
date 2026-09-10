@@ -4,5 +4,9 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Ohne diesen Eintrag kommt die ausgelieferte App im Sandkasten nicht
+	     an den Sync-Server. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

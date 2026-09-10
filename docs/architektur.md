@@ -186,6 +186,26 @@ geschützt.
   Steht das Fenster schon offen, erscheint einfach die Eingabe. Ein Zettel
   soll den Arbeitsplatz nicht umräumen.
 
+## Plattformkram, der leicht durchrutscht
+
+Drei Einstellungen fallen erst im ausgelieferten Build auf, weil die
+Debug-Builds sie geschenkt bekommen:
+
+* **Android** braucht `android.permission.INTERNET` im *Haupt*-Manifest.
+  `flutter create` legt sie nur im Debug-Manifest an; ohne sie könnte die
+  fertige App nicht einmal fragen, ob sie ins Netz darf.
+* **macOS** läuft im Sandkasten und braucht
+  `com.apple.security.network.client` in `Release.entitlements`, sonst
+  erreicht die ausgelieferte App keinen Sync-Server.
+* **iOS** beantwortet `canLaunchUrl` mit „nein“, solange das Schema nicht in
+  `LSApplicationQueriesSchemes` steht – Links auf Referenz-Zetteln blieben
+  sonst tot.
+
+Dazu: die Datenbank liegt im **Support**- und nicht im Dokumente-Verzeichnis.
+Das ist nicht nur semantisch richtiger, sondern auch robuster – der
+Dokumente-Ordner hängt unter Linux an `xdg-user-dirs`, und fehlt das Paket,
+startet die App gar nicht.
+
 ## Tests
 
 | Datei | Deckt ab |

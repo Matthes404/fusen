@@ -206,9 +206,12 @@ class _SearchHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    // Oben links statt mittig: die Hilfe soll dort stehen, wo gleich die
+    // Treffer erscheinen.
+    return Align(
+      alignment: Alignment.topLeft,
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

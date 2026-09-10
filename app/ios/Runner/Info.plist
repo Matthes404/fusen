@@ -59,6 +59,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- url_launcher prüft mit canLaunchUrl, ob das System ein Schema
+	     öffnen kann; ohne diesen Eintrag antwortet iOS mit „nein“, und
+	     Links auf Referenz-Zetteln blieben tot. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>http</string>
+		<string>https</string>
+		<string>mailto</string>
+	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

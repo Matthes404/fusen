@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/note_status.dart';
 import '../models/note_type.dart';
@@ -14,9 +15,23 @@ part 'database.g.dart';
 class FusenDatabase extends _$FusenDatabase {
   FusenDatabase(super.e);
 
-  /// Datenbank im App-Verzeichnis des Geräts.
+  /// Datenbank im Anwendungsverzeichnis des Geräts.
+  ///
+  /// Bewusst das Support- und nicht das Dokumente-Verzeichnis (der Standard
+  /// von `drift_flutter`): die Datei ist Anwendungsdatenbestand, kein Dokument
+  /// des Nutzers. Auf Linux hängt der Dokumente-Ordner außerdem an
+  /// `xdg-user-dirs`; ist das Paket nicht installiert, gibt es ihn gar nicht,
+  /// und die App startete dann nicht. Das Support-Verzeichnis leitet sich
+  /// dagegen aus `XDG_DATA_HOME` bzw. `~/.local/share` ab und ist immer da.
   FusenDatabase.open({String name = 'fusen'})
-    : super(driftDatabase(name: name));
+    : super(
+        driftDatabase(
+          name: name,
+          native: DriftNativeOptions(
+            databaseDirectory: getApplicationSupportDirectory,
+          ),
+        ),
+      );
 
   /// Flüchtige Datenbank für Tests.
   FusenDatabase.memory() : super(_memoryExecutor());
