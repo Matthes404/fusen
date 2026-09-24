@@ -54,6 +54,8 @@ VersionInfoVersion={#NumericVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Die Sprache folgt Windows; gefragt wird nur, wenn keine passt.
+ShowLanguageDialog=auto
 ; Läuft Fusen noch, schließt der Installer es vor dem Überschreiben.
 CloseApplications=yes
 

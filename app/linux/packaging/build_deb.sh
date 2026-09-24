@@ -38,7 +38,7 @@ glibc="$(
   find "$bundle" -type f \( -name '*.so' -o -name fusen \) \
     ! -name libdartjni.so -exec objdump -T {} + 2>/dev/null |
     grep -o 'GLIBC_[0-9.]*' | sed 's/^GLIBC_//' | sort -Vu | tail -n 1
-)"
+)" || true
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
