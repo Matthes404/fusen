@@ -13,10 +13,6 @@ on:
     branches: ['**']
   workflow_dispatch:
 
-concurrency:
-  group: builds-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -69,6 +65,12 @@ jobs:
     name: Pakete
     needs: plan
     if: needs.plan.outputs.build == 'true'
+    # Hier und nicht für den ganzen Workflow: ein Push, der nichts Natives
+    # ändert, soll einen laufenden Build nicht abbrechen und dann selbst
+    # nichts bauen.
+    concurrency:
+      group: builds-${{ github.ref }}
+      cancel-in-progress: true
     uses: ./.github/workflows/package.yml
     with:
       version: ${{ needs.plan.outputs.version }}
