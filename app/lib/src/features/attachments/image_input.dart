@@ -51,29 +51,75 @@ abstract final class ImageInput {
     return (await _prepareAll([file])).firstOrNull;
   }
 
-  /// Ein Bild aus der Zwischenablage – ein Bildschirmfoto oder im
-  /// Dateimanager kopierte Bilddateien. `null`, wenn keins drin liegt.
+  /// Für „Aus der Zwischenablage“: erst im Dateimanager kopierte
+  /// Bilddateien, dann ein Bild als Pixel (ein Bildschirmfoto).
   static Future<List<PreparedImage>> fromClipboard() async {
-    if (!hasClipboardImages) return const [];
+    final files = await clipboardFiles();
+    if (files.isNotEmpty) return files;
+    return clipboardBitmap();
+  }
+
+  /// Ob im Dateimanager kopierte Bilddateien bereitliegen – ohne sie zu
+  /// lesen. Für Strg+V, das bei Text sonst kurz eine Bildleiste aufblitzen
+  /// ließe.
+  static Future<bool> clipboardHasImageFiles() async {
+    if (!hasClipboardImages) return false;
     try {
-      final bytes = await Pasteboard.image;
-      if (bytes != null && bytes.isNotEmpty) {
-        return [await prepareImage(bytes)];
-      }
-      final paths = await Pasteboard.files();
-      return await _prepareAll([
-        for (final path in paths)
-          if (_looksLikeImage(path)) XFile(path),
-      ]);
-    } on UnsupportedImageException {
-      return const [];
+      return (await Pasteboard.files()).any(_looksLikeImage);
     } on Object catch (error) {
-      // Ein Plugin, das auf dieser Plattform nicht antwortet, soll das
-      // Einfügen von Text nicht verhindern.
-      debugPrint('Fusen: Zwischenablage nicht lesbar ($error)');
-      return const [];
+      _unreadable(error);
+      return false;
     }
   }
+
+  /// Im Dateimanager kopierte Bilddateien.
+  ///
+  /// Vor dem Bild abgefragt, weil der Finder zu einer kopierten Datei auch
+  /// ihr Symbol als Bild in die Zwischenablage legt. Leer, wenn keine da
+  /// sind; [ClipboardFilesUnreadableException], wenn sie sich nicht lesen
+  /// lassen – im macOS-Sandkasten darf die App nur, was man hineinzieht oder
+  /// im Dialog wählt.
+  static Future<List<PreparedImage>> clipboardFiles() async {
+    if (!hasClipboardImages) return const [];
+    final List<XFile> files;
+    try {
+      files = [
+        for (final path in await Pasteboard.files())
+          if (_looksLikeImage(path)) XFile(path),
+      ];
+    } on Object catch (error) {
+      _unreadable(error);
+      return const [];
+    }
+    try {
+      return await _prepareAll(files);
+    } on FileSystemException catch (error) {
+      _unreadable(error);
+      throw const ClipboardFilesUnreadableException();
+    }
+  }
+
+  /// Ein Bild als Pixel – ein Bildschirmfoto. `[]`, wenn keins da ist.
+  ///
+  /// Ist das Bild zu groß oder kein lesbares Format, kommt der Fehler durch:
+  /// stillschweigend nichts einzufügen, sähe aus wie ein kaputtes Strg+V.
+  static Future<List<PreparedImage>> clipboardBitmap() async {
+    if (!hasClipboardImages) return const [];
+    final Uint8List? bytes;
+    try {
+      bytes = await Pasteboard.image;
+    } on Object catch (error) {
+      _unreadable(error);
+      return const [];
+    }
+    if (bytes == null || bytes.isEmpty) return const [];
+    return [await prepareImage(bytes)];
+  }
+
+  /// Ein Plugin, das auf dieser Plattform nicht antwortet, soll das Einfügen
+  /// von Text nicht verhindern.
+  static void _unreadable(Object error) =>
+      debugPrint('Fusen: Zwischenablage nicht lesbar ($error)');
 
   /// Hineingezogene Dateien – was kein Bild ist, fällt still heraus.
   static Future<List<PreparedImage>> fromFiles(List<XFile> files) =>
@@ -103,9 +149,20 @@ abstract final class ImageInput {
   }
 }
 
+/// Kopierte Dateien, die die App nicht lesen darf.
+class ClipboardFilesUnreadableException implements Exception {
+  const ClipboardFilesUnreadableException();
+
+  @override
+  String toString() =>
+      'Die kopierte Datei lässt sich nicht öffnen – zieh sie stattdessen '
+      'hinein.';
+}
+
 /// Eine verständliche Meldung, wenn ein Bild nicht angenommen wurde.
 String describeImageError(Object error) => switch (error) {
   ImageTooLargeException() => error.toString(),
   UnsupportedImageException() => error.toString(),
+  ClipboardFilesUnreadableException() => error.toString(),
   _ => 'Das Bild ließ sich nicht laden.',
 };

@@ -119,6 +119,8 @@ class ProjectMenu extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    // Vor dem Dialog holen: danach ist das Menü womöglich schon weg.
+    final repository = ref.read(projectRepositoryProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -144,7 +146,7 @@ class ProjectMenu extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(projectRepositoryProvider).delete(project.id);
+    await repository.delete(project.id);
   }
 }
 
@@ -197,13 +199,14 @@ Future<void> renameProject(
   WidgetRef ref,
   ProjectRow project,
 ) async {
+  final repository = ref.read(projectRepositoryProvider);
   final name = await promptForProjectName(
     context,
     title: 'Projekt umbenennen',
     initial: project.name,
   );
   if (name == null) return;
-  await ref.read(projectRepositoryProvider).rename(project.id, name);
+  await repository.rename(project.id, name);
 }
 
 /// Kleiner Dialog für „Name eingeben“ – beim Anlegen wie beim Umbenennen.

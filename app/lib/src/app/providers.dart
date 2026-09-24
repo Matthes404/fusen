@@ -111,17 +111,22 @@ final noteProvider = StreamProvider.family<NoteRow?, String>(
 );
 
 /// Die Bilder eines Zettels.
-final noteAttachmentsProvider =
-    StreamProvider.family<List<AttachmentRow>, String>(
+///
+/// Wie die Bilddaten darunter mit `autoDispose`: jede Karte, die je auf dem
+/// Bildschirm war, hielte sonst ihre Abfrage offen – und jedes je gezeigte
+/// Bild seine Bytes im Speicher.
+final noteAttachmentsProvider = StreamProvider.autoDispose
+    .family<List<AttachmentRow>, String>(
       (ref, noteId) =>
           ref.watch(attachmentRepositoryProvider).watchForNote(noteId),
     );
 
 /// Die Bilddaten eines Anhangs – `null`, solange sie noch unterwegs sind.
-final attachmentBytesProvider = StreamProvider.family<Uint8List?, String>(
-  (ref, attachmentId) =>
-      ref.watch(attachmentRepositoryProvider).watchBytes(attachmentId),
-);
+final attachmentBytesProvider = StreamProvider.autoDispose
+    .family<Uint8List?, String>(
+      (ref, attachmentId) =>
+          ref.watch(attachmentRepositoryProvider).watchBytes(attachmentId),
+    );
 
 /// Offene, priorisierte Arbeitszettel aus allen Projekten.
 final prioritizedProvider = StreamProvider<List<NoteRow>>(

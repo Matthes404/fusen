@@ -148,6 +148,39 @@ void main() {
       );
     });
 
+    test('ein Bildschirmfoto aus der Windows-Zwischenablage wird PNG', () {
+      // Windows liefert Bildschirmfotos als BMP. Gespeichert werden sollen
+      // sie wie jedes Bildschirmfoto: als PNG, damit Schrift scharf bleibt.
+      final bmp = Uint8List.fromList(
+        img.encodeBmp(
+          img.Image(width: 640, height: 400)
+            ..clear(img.ColorRgb8(250, 250, 250)),
+        ),
+      );
+
+      final prepared = prepareImageSync(bmp);
+
+      expect(prepared.mimeType, 'image/png');
+      expect(prepared.width, 640);
+      expect(prepared.bytes.length, lessThan(bmp.length));
+    });
+
+    test('für Bitmaps gilt eine höhere Grenze', () {
+      // Unkomprimiert hat schon ein Foto zweier 4K-Bildschirme über 60 MB.
+      final big = Uint8List(imageMaxInputBytes + 1)..setAll(0, 'BM'.codeUnits);
+      final tooBig = Uint8List(imageMaxBitmapBytes + 1)
+        ..setAll(0, 'BM'.codeUnits);
+
+      expect(
+        () => prepareImageSync(big),
+        throwsA(isNot(isA<ImageTooLargeException>())),
+      );
+      expect(
+        () => prepareImageSync(tooBig),
+        throwsA(isA<ImageTooLargeException>()),
+      );
+    });
+
     test('läuft auch im eigenen Isolate', () async {
       final prepared = await prepareImage(_png(3000, 100));
 

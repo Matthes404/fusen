@@ -25,6 +25,13 @@ const int imageShrinkBytes = 2500 * 1024;
 /// Mehr nimmt die App gar nicht erst an.
 const int imageMaxInputBytes = 40 * 1024 * 1024;
 
+/// Dasselbe für unkomprimierte Bitmaps. Unter Windows kommt ein
+/// Bildschirmfoto aus der Zwischenablage als BMP – vier Bytes pro Pixel,
+/// ein Foto zweier 4K-Bildschirme hat da schon 66 MB. Beim Entpacken braucht
+/// es nicht mehr Speicher, als es groß ist; die strengere Grenze oben gilt
+/// komprimierten Formaten, die sich um ein Vielfaches aufblähen.
+const int imageMaxBitmapBytes = 160 * 1024 * 1024;
+
 /// Obergrenze für das, was gespeichert und abgeglichen wird. Der Server
 /// erlaubt etwas mehr, damit die Grenze hier die maßgebliche ist.
 const int imageMaxStoredBytes = 20 * 1024 * 1024;
@@ -140,20 +147,25 @@ PreparedImage prepareImageSync(
   String? fileName,
   DateTime? now,
 }) {
-  if (input.length > imageMaxInputBytes) {
-    throw ImageTooLargeException(input.length);
-  }
   final kind = sniffImage(input);
+  final limit = kind == ImageKind.bmp
+      ? imageMaxBitmapBytes
+      : imageMaxInputBytes;
+  if (input.length > limit) throw ImageTooLargeException(input.length);
   if (kind == null) throw const UnsupportedImageException();
 
   final (width, height) = _dimensions(input, kind);
   final edge = width == null || height == null
       ? 0
       : (width > height ? width : height);
+  // Eine BMP wird immer umgerechnet: unkomprimiert ist sie ein Vielfaches
+  // so groß wie dasselbe Bild als PNG.
   final wantsShrink =
       kind.decodable &&
       kind != ImageKind.gif &&
-      (edge > imageShrinkEdge || input.length > imageShrinkBytes);
+      (kind == ImageKind.bmp ||
+          edge > imageShrinkEdge ||
+          input.length > imageShrinkBytes);
 
   if (!wantsShrink) {
     if (input.length > imageMaxStoredBytes) {
@@ -190,10 +202,10 @@ PreparedImage prepareImageSync(
   }
 
   // Bildschirmfotos bleiben PNG: Schrift und scharfe Kanten sehen als JPEG
-  // verwaschen aus, und flache Flächen packt PNG ohnehin kleiner. Nur wenn
-  // das Ergebnis trotzdem riesig ist und nichts durchsichtig ist, wird es
-  // doch JPEG.
-  if (kind == ImageKind.png) {
+  // verwaschen aus, und flache Flächen packt PNG ohnehin kleiner. Unter
+  // Windows kommen sie als BMP aus der Zwischenablage. Nur wenn das Ergebnis
+  // trotzdem riesig ist und nichts durchsichtig ist, wird es doch JPEG.
+  if (kind == ImageKind.png || kind == ImageKind.bmp) {
     final png = img.encodePng(image, level: 6);
     if (png.length <= imageShrinkBytes || _hasTransparency(image)) {
       return _finish(png, ImageKind.png, fileName, now, image);

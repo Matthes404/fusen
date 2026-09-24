@@ -13,6 +13,7 @@ import '../../ui/theme.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets/labels.dart';
 import '../../ui/widgets/priority_chip.dart';
+import '../../ui/widgets/project_menu_items.dart';
 import '../../ui/widgets/undo.dart';
 import 'capture_plan.dart';
 
@@ -77,11 +78,17 @@ class _ListImportDialogState extends ConsumerState<ListImportDialog> {
 
   CapturePlan _plan = CapturePlan.empty;
 
+  /// Der Text beim letzten Planen. Der Controller meldet auch bloße
+  /// Cursorbewegungen; die sollen abgewählte Einträge nicht wieder anwählen.
+  late String _plannedText = _text.text;
+
   @override
   void initState() {
     super.initState();
     _replan();
     _text.addListener(() {
+      if (_text.text == _plannedText) return;
+      _plannedText = _text.text;
       _skipped.clear();
       setState(_replan);
     });
@@ -116,7 +123,13 @@ class _ListImportDialogState extends ConsumerState<ListImportDialog> {
     final wide = size.width >= 820;
     final tokens = context.paper;
 
-    final editor = _Editor(controller: _text, onPaste: _pasteFromClipboard);
+    // Auf dem Handy nicht gleich die Tastatur: sie verdeckte den halben
+    // Dialog, und der Weg ist ohnehin meist „Einfügen“.
+    final editor = _Editor(
+      controller: _text,
+      onPaste: _pasteFromClipboard,
+      autofocus: wide && _text.text.isEmpty,
+    );
     final preview = _Preview(
       embedded: !wide,
       plan: _plan,
@@ -134,97 +147,143 @@ class _ListImportDialogState extends ConsumerState<ListImportDialog> {
       }),
     );
 
-    return Dialog(
-      insetPadding: EdgeInsets.all(wide ? Insets.xxl : Insets.md),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 980,
-          maxHeight: wide ? 680 : size.height,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Header(source: widget.source),
-            Divider(height: 1, color: tokens.hairline),
-            _Options(
-              projectId: _projectId,
-              type: _type,
-              priority: _priority,
-              onProject: (id) => setState(() => _projectId = id),
-              onType: (type) => setState(() {
-                _type = type;
-                _replan();
-              }),
-              onPriority: (priority) => setState(() {
-                _priority = priority;
-                _replan();
-              }),
-            ),
-            Divider(height: 1, color: tokens.hairline),
-            Flexible(
-              child: wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: editor),
-                        VerticalDivider(width: 1, color: tokens.hairline),
-                        Expanded(child: preview),
-                      ],
-                    )
-                  : ListView(
-                      shrinkWrap: true,
-                      children: [
-                        SizedBox(height: 220, child: editor),
-                        Divider(height: 1, color: tokens.hairline),
-                        preview,
-                      ],
-                    ),
-            ),
-            Divider(height: 1, color: tokens.hairline),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Insets.lg,
-                Insets.md,
-                Insets.md,
-                Insets.md,
-              ),
-              child: Row(
-                children: [
-                  if (widget.source != null)
-                    Expanded(
-                      child: CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                        value: _archiveSource,
-                        onChanged: (value) =>
-                            setState(() => _archiveSource = value ?? true),
-                        title: const Text('Ursprünglichen Zettel archivieren'),
+    final header = _Header(source: widget.source, compact: !wide);
+    final options = _Options(
+      projectId: _projectId,
+      type: _type,
+      priority: _priority,
+      onProject: (id) => setState(() => _projectId = id),
+      onType: (type) => setState(() {
+        _type = type;
+        _replan();
+      }),
+      onPriority: (priority) => setState(() {
+        _priority = priority;
+        _replan();
+      }),
+    );
+    final divider = Divider(height: 1, color: tokens.hairline);
+
+    // Während des Speicherns nicht schließen: der Dialog schließt sich danach
+    // selbst, und ein zweites Schließen träfe die Seite darunter.
+    return PopScope(
+      canPop: !_saving,
+      child: Dialog(
+        insetPadding: EdgeInsets.all(wide ? Insets.xxl : Insets.md),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 980,
+            maxHeight: wide ? 680 : size.height,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Breit bleiben Kopf und Optionen stehen. Auf dem Handy
+              // scrollen sie mit – fest stehend ließen sie mit offener
+              // Tastatur dem Textfeld keinen Platz.
+              if (wide) ...[header, divider, options, divider],
+              Flexible(
+                child: wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: editor),
+                          VerticalDivider(width: 1, color: tokens.hairline),
+                          Expanded(child: preview),
+                        ],
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        // Das Textfeld gleich unter den Kopf: Einfügen ist
+                        // der erste Schritt, die Optionen braucht man selten.
+                        children: [
+                          header,
+                          divider,
+                          SizedBox(height: 220, child: editor),
+                          divider,
+                          options,
+                          divider,
+                          preview,
+                        ],
                       ),
-                    )
-                  else
-                    const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Abbrechen'),
-                  ),
-                  const SizedBox(width: Insets.sm),
-                  FilledButton.icon(
-                    style: brandButtonStyle(),
-                    onPressed: _selected.isEmpty || _saving ? null : _create,
-                    icon: const Icon(Icons.playlist_add_check_rounded),
-                    label: Text(switch (_selected.length) {
-                      0 => 'Anlegen',
-                      1 => '1 Zettel anlegen',
-                      final n => '$n Zettel anlegen',
-                    }),
-                  ),
-                ],
               ),
-            ),
-          ],
+              Divider(height: 1, color: tokens.hairline),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Insets.lg,
+                  Insets.md,
+                  Insets.md,
+                  Insets.md,
+                ),
+                // Schmal wird „Abbrechen“ zum Kreuz und die Beschriftung
+                // darf sich kürzen – sonst schöbe sie den Knopf aus dem Bild.
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 440;
+                    final cancel = compact
+                        ? IconButton(
+                            tooltip: 'Abbrechen',
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () => Navigator.of(context).pop(),
+                          )
+                        : TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Abbrechen'),
+                          );
+                    final save = FilledButton.icon(
+                      style: brandButtonStyle(),
+                      onPressed: _selected.isEmpty || _saving ? null : _create,
+                      icon: const Icon(Icons.playlist_add_check_rounded),
+                      label: Text(
+                        switch (_selected.length) {
+                          0 => 'Anlegen',
+                          1 => '1 Zettel anlegen',
+                          final n => '$n Zettel anlegen',
+                        },
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                    if (widget.source == null) {
+                      // Der Knopf gibt nur nach, wenn es wirklich eng wird –
+                      // ein Platzhalter daneben nähme ihm sonst die Hälfte.
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          cancel,
+                          const SizedBox(width: Insets.sm),
+                          Flexible(child: save),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: _archiveSource,
+                            onChanged: (value) =>
+                                setState(() => _archiveSource = value ?? true),
+                            title: const Text(
+                              'Ursprünglichen Zettel archivieren',
+                            ),
+                          ),
+                        ),
+                        cancel,
+                        const SizedBox(width: Insets.sm),
+                        Flexible(child: save),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -244,11 +303,23 @@ class _ListImportDialogState extends ConsumerState<ListImportDialog> {
     final source = widget.source;
     final navigator = Navigator.of(context);
 
-    final created = await capture.createAll(_selected, projectId: _projectId);
+    final List<NoteRow> created;
     final archive = source != null && _archiveSource;
-    if (archive) await notes.archive(source.id);
+    try {
+      created = await capture.createAll(_selected, projectId: _projectId);
+      if (archive) await notes.archive(source.id);
+    } on Object catch (error) {
+      // Ohne das bliebe der Dialog gesperrt: Schließen ist während des
+      // Speicherns abgeschaltet.
+      if (mounted) setState(() => _saving = false);
+      final messenger = widget.messenger;
+      if (messenger != null) {
+        showMessage(messenger, 'Anlegen fehlgeschlagen: $error');
+      }
+      return;
+    }
 
-    navigator.pop();
+    if (mounted) navigator.pop();
     final messenger = widget.messenger;
     if (messenger == null) return;
     showUndoSnackBar(
@@ -265,9 +336,14 @@ class _ListImportDialogState extends ConsumerState<ListImportDialog> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.source});
+  const _Header({required this.source, required this.compact});
 
   final NoteRow? source;
+
+  /// Auf dem Handy nur die Überschrift: die Erklärung steht als Beispiel
+  /// schon im leeren Textfeld, und Schließen liegt unten im Fuß – der Kopf
+  /// scrollt dort mit weg.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -302,21 +378,24 @@ class _Header extends StatelessWidget {
                       : 'In einzelne Zettel aufteilen',
                   style: theme.textTheme.titleMedium,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Jede Zeile wird ein Zettel. Eingerücktes wird zu Details, '
-                  'Überschriften wie „Ideen:“ bestimmen den Typ, '
-                  '[x] heißt erledigt.',
-                  style: theme.textTheme.bodySmall,
-                ),
+                if (!compact) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Jede Zeile wird ein Zettel. Eingerücktes wird zu Details, '
+                    'Überschriften wie „Ideen:“ bestimmen den Typ, '
+                    '[x] heißt erledigt.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Schließen',
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+          if (!compact)
+            IconButton(
+              tooltip: 'Schließen',
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
         ],
       ),
     );
@@ -343,6 +422,8 @@ class _Options extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projects = ref.watch(projectsProvider).value ?? const [];
+    final archivedProjects =
+        ref.watch(archivedProjectsProvider).value ?? const [];
     final scheme = Theme.of(context).colorScheme;
 
     Widget field(String label, Widget child) => SizedBox(
@@ -374,29 +455,12 @@ class _Options extends ConsumerWidget {
             DropdownButtonFormField<String?>(
               initialValue: projectId,
               isExpanded: true,
-              items: [
-                const DropdownMenuItem<String?>(child: Text('Inbox')),
-                for (final project in projects)
-                  DropdownMenuItem<String?>(
-                    value: project.id,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          size: 10,
-                          color: Color(project.color),
-                        ),
-                        const SizedBox(width: Insets.sm),
-                        Flexible(
-                          child: Text(
-                            project.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+              items: projectMenuItems(
+                projects: projects,
+                archived: archivedProjects,
+                selected: projectId,
+                showColor: true,
+              ),
               onChanged: onProject,
             ),
           ),
@@ -453,10 +517,15 @@ class _Options extends ConsumerWidget {
 }
 
 class _Editor extends StatelessWidget {
-  const _Editor({required this.controller, required this.onPaste});
+  const _Editor({
+    required this.controller,
+    required this.onPaste,
+    required this.autofocus,
+  });
 
   final TextEditingController controller;
   final VoidCallback onPaste;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -465,7 +534,7 @@ class _Editor extends StatelessWidget {
       children: [
         TextField(
           controller: controller,
-          autofocus: controller.text.isEmpty,
+          autofocus: autofocus,
           expands: true,
           maxLines: null,
           textAlignVertical: TextAlignVertical.top,

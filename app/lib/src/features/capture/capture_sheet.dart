@@ -111,10 +111,11 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
 
   NotePriority? get _effectivePriority => _draft.priority ?? _priority;
 
+  /// Speichern geht, sobald es Text gibt – oder ein Bild. Auch ein Bild mit
+  /// nichts als `@projekt #tag` daneben: der Plan ist dann leer, das Feld
+  /// aber nicht.
   bool get _canSave =>
-      !_saving &&
-      _loadingImages == 0 &&
-      (!_plan.isEmpty || (_images.isNotEmpty && _controller.text.isEmpty));
+      !_saving && _loadingImages == 0 && (!_plan.isEmpty || _images.isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -214,31 +215,76 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
                 Insets.md,
                 Insets.sm,
               ),
-              child: Row(
-                children: [
-                  _ImageButtons(onPick: _pickImages, onCamera: _takePhoto),
-                  IconButton(
-                    tooltip: 'Kurzbefehle',
-                    icon: const Icon(Icons.help_outline_rounded, size: 20),
-                    onPressed: _showHelp,
-                  ),
-                  const SizedBox(width: Insets.xs),
-                  const Expanded(child: _Shortcuts()),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Abbrechen'),
-                  ),
-                  const SizedBox(width: Insets.sm),
-                  FilledButton(
+              // Auf dem Handy passen Bildknöpfe, Hilfe, „Abbrechen“ und ein
+              // „3 Zettel ablegen“ nicht nebeneinander: dort werden die
+              // Knöpfe dichter, „Abbrechen“ wird zum Kreuz und die
+              // Beschriftung kürzer.
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 440;
+                  final count = _plan.split ? _plan.drafts.length : 1;
+                  final density = compact ? VisualDensity.compact : null;
+                  final cancel = compact
+                      ? IconButton(
+                          tooltip: 'Abbrechen',
+                          visualDensity: density,
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          onPressed: () => Navigator.of(context).pop(),
+                        )
+                      : TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Abbrechen'),
+                        );
+                  final save = FilledButton(
                     style: brandButtonStyle(),
                     onPressed: _canSave ? _save : null,
                     child: Text(
-                      _plan.split && _plan.drafts.length > 1
-                          ? '${_plan.drafts.length} Zettel ablegen'
-                          : 'Ablegen',
+                      switch ((count > 1, compact)) {
+                        (false, _) => 'Ablegen',
+                        (true, false) => '$count Zettel ablegen',
+                        (true, true) => 'Ablegen ($count)',
+                      },
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  );
+                  return Row(
+                    children: [
+                      _ImageButtons(
+                        onPick: _pickImages,
+                        onCamera: _takePhoto,
+                        visualDensity: density,
+                      ),
+                      IconButton(
+                        tooltip: 'Kurzbefehle',
+                        visualDensity: density,
+                        icon: const Icon(Icons.help_outline_rounded, size: 20),
+                        onPressed: _showHelp,
+                      ),
+                      const SizedBox(width: Insets.xs),
+                      if (compact)
+                        // Der Knopf ist hier das einzige, was nachgeben
+                        // darf – und nur, wenn es wirklich eng wird.
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              cancel,
+                              const SizedBox(width: Insets.sm),
+                              Flexible(child: save),
+                            ],
+                          ),
+                        )
+                      else ...[
+                        const Expanded(child: _Shortcuts()),
+                        cancel,
+                        const SizedBox(width: Insets.sm),
+                        save,
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -246,25 +292,30 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
       ),
     );
 
-    return Dialog(
-      alignment: Alignment.topCenter,
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: Insets.lg,
-        vertical: 64,
-      ),
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
-        child: DropTarget(
-          enable: ImageInput.supportsDrop,
-          onDragEntered: (_) => setState(() => _dragging = true),
-          onDragExited: (_) => setState(() => _dragging = false),
-          onDragDone: (details) {
-            setState(() => _dragging = false);
-            _addImages(() => ImageInput.fromFiles(details.files));
-          },
-          child: sheet,
+    // Während des Speicherns nicht schließen: das Fenster schließt sich
+    // danach selbst, und ein zweites Schließen träfe die Seite darunter.
+    return PopScope(
+      canPop: !_saving,
+      child: Dialog(
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: Insets.lg,
+          vertical: 64,
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: DropTarget(
+            enable: ImageInput.supportsDrop,
+            onDragEntered: (_) => setState(() => _dragging = true),
+            onDragExited: (_) => setState(() => _dragging = false),
+            onDragDone: (details) {
+              setState(() => _dragging = false);
+              _addImages(() => ImageInput.fromFiles(details.files));
+            },
+            child: sheet,
+          ),
         ),
       ),
     );
@@ -342,25 +393,36 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
     return KeyEventResult.ignored;
   }
 
+  /// Strg+V: im Dateimanager kopierte Bilder, sonst Text, sonst ein Bild.
+  ///
+  /// Text vor Bild, weil Tabellenprogramme zu kopierten Zellen auch ein Bild
+  /// der Zellen ablegen – eingefügt werden soll aber die Liste.
   Future<void> _paste() async {
-    if (ImageInput.hasClipboardImages) {
-      final images = await ImageInput.fromClipboard();
-      if (images.isNotEmpty) {
-        if (mounted) setState(() => _images.addAll(images));
-        return;
-      }
+    if (await ImageInput.clipboardHasImageFiles()) {
+      // Kopierte Dateien: der Text daneben wäre nur ihr Name. Lassen sie
+      // sich nicht lesen, sagt das die Meldung aus _addImages.
+      await _addImages(ImageInput.clipboardFiles);
+      return;
     }
     final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
     final text = data?.text;
-    if (text == null || text.isEmpty || !mounted) return;
-    final value = _controller.value;
-    final selection = value.selection.isValid
-        ? value.selection
-        : TextSelection.collapsed(offset: value.text.length);
-    _controller.value = TextEditingValue(
-      text: value.text.replaceRange(selection.start, selection.end, text),
-      selection: TextSelection.collapsed(offset: selection.start + text.length),
-    );
+    if (text != null && text.isNotEmpty) {
+      final value = _controller.value;
+      final selection = value.selection.isValid
+          ? value.selection
+          : TextSelection.collapsed(offset: value.text.length);
+      _controller.value = TextEditingValue(
+        text: value.text.replaceRange(selection.start, selection.end, text),
+        selection: TextSelection.collapsed(
+          offset: selection.start + text.length,
+        ),
+      );
+      return;
+    }
+    if (ImageInput.hasClipboardImages) {
+      await _addImages(ImageInput.clipboardBitmap);
+    }
   }
 
   Future<void> _pickImages() => _addImages(ImageInput.pick);
@@ -470,7 +532,8 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
 
     var drafts = _plan.drafts;
     // Nur Bilder, kein Text: dann eben ein Zettel mit Bild, benannt nach
-    // der Datei – ein Bildschirmfoto heißt nach seinem Zeitpunkt.
+    // der Datei – ein Bildschirmfoto heißt nach seinem Zeitpunkt. Was an
+    // Kurzbefehlen danebenstand (@projekt, #tag), gilt trotzdem.
     if (drafts.isEmpty && _images.isNotEmpty) {
       final name = _images.first.fileName;
       final dot = name.lastIndexOf('.');
@@ -478,22 +541,39 @@ class _CaptureDialogState extends ConsumerState<CaptureDialog> {
         NoteDraft(
           body: '',
           title: dot > 0 ? name.substring(0, dot) : name,
+          projectName: _draft.projectQuery,
           type: _effectiveType,
           priority: _effectivePriority,
+          tags: _draft.tags,
         ),
       ];
     }
 
-    final created = await capture.createAll(
-      drafts,
-      projectId: _targetChosen ? _target : null,
-    );
-    if (created.isNotEmpty) {
-      for (final image in _images) {
-        await attachments.add(created.first.id, image);
+    final List<NoteRow> created;
+    try {
+      created = await capture.createAll(
+        drafts,
+        projectId: _targetChosen ? _target : null,
+      );
+      if (created.isNotEmpty) {
+        for (final image in _images) {
+          await attachments.add(created.first.id, image);
+        }
       }
+    } on Object catch (error) {
+      // Ohne das bliebe das Fenster gesperrt: Schließen ist während des
+      // Speicherns abgeschaltet.
+      if (mounted) {
+        setState(() => _saving = false);
+        showMessage(
+          ScaffoldMessenger.of(context),
+          'Speichern fehlgeschlagen: $error',
+        );
+      }
+      return;
     }
 
+    if (!mounted) return;
     final projectId = created.firstOrNull?.projectId;
     ref.read(lastProjectProvider.notifier).remember(projectId);
     navigator.pop(projectId);
@@ -629,23 +709,29 @@ class _SplitPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.format_list_bulleted_rounded,
-                size: 18,
-                color: scheme.onPrimaryContainer,
-              ),
-              const SizedBox(width: Insets.sm),
-              Expanded(
-                child: Text(
-                  '$count Einträge erkannt',
-                  style: theme.textTheme.labelLarge?.copyWith(
+          // Auf dem Handy steht die Umschaltung unter der Überschrift statt
+          // daneben – nebeneinander ist dort kein Platz.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final title = Row(
+                children: [
+                  Icon(
+                    Icons.format_list_bulleted_rounded,
+                    size: 18,
                     color: scheme.onPrimaryContainer,
                   ),
-                ),
-              ),
-              SegmentedButton<bool>(
+                  const SizedBox(width: Insets.sm),
+                  Expanded(
+                    child: Text(
+                      '$count Einträge erkannt',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+              final toggle = SegmentedButton<bool>(
                 showSelectedIcon: false,
                 style: const ButtonStyle(
                   visualDensity: VisualDensity.compact,
@@ -659,8 +745,28 @@ class _SplitPanel extends StatelessWidget {
                 ],
                 selected: {plan.split},
                 onSelectionChanged: (value) => onSplit(value.first),
-              ),
-            ],
+              );
+              if (constraints.maxWidth >= 400) {
+                return Row(
+                  children: [
+                    Expanded(child: title),
+                    toggle,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  title,
+                  const SizedBox(height: Insets.xs),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: toggle,
+                  ),
+                ],
+              );
+            },
           ),
           if (plan.split) ...[
             const SizedBox(height: Insets.sm),
@@ -701,14 +807,21 @@ class _SplitPanel extends StatelessWidget {
             Row(
               children: [
                 if (drafts.length > visible)
-                  Text(
-                    'und ${drafts.length - visible} weitere',
-                    style: theme.textTheme.labelSmall,
-                  ),
-                const Spacer(),
+                  Expanded(
+                    child: Text(
+                      'und ${drafts.length - visible} weitere',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  )
+                else
+                  const Spacer(),
+                // Kurz, damit er auch auf dem Handy ganz dasteht – die
+                // Vorschau sieht man ja schon darüber.
                 TextButton(
                   onPressed: onOpenImport,
-                  child: const Text('Vorschau & anpassen …'),
+                  child: const Text('Anpassen …'),
                 ),
               ],
             ),
@@ -818,10 +931,15 @@ class _ImageTray extends StatelessWidget {
 /// Bild anhängen: auf dem Handy Galerie oder Kamera, auf dem Desktop die
 /// Dateiauswahl – einfügen und hineinziehen gehen dort ohnehin.
 class _ImageButtons extends StatelessWidget {
-  const _ImageButtons({required this.onPick, required this.onCamera});
+  const _ImageButtons({
+    required this.onPick,
+    required this.onCamera,
+    this.visualDensity,
+  });
 
   final VoidCallback onPick;
   final VoidCallback onCamera;
+  final VisualDensity? visualDensity;
 
   @override
   Widget build(BuildContext context) {
@@ -832,12 +950,14 @@ class _ImageButtons extends StatelessWidget {
           tooltip: ImageInput.hasClipboardImages
               ? 'Bild anhängen (oder mit Strg+V einfügen, hineinziehen)'
               : 'Bild aus der Galerie',
+          visualDensity: visualDensity,
           icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
           onPressed: onPick,
         ),
         if (ImageInput.hasCamera)
           IconButton(
             tooltip: 'Foto aufnehmen',
+            visualDensity: visualDensity,
             icon: const Icon(Icons.photo_camera_outlined, size: 20),
             onPressed: onCamera,
           ),

@@ -562,6 +562,7 @@ class _SwipeActions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final canCheck = note.type.isCheckable;
+    final archived = note.archivedAt != null;
 
     Widget background(
       Alignment alignment,
@@ -606,12 +607,21 @@ class _SwipeActions extends ConsumerWidget {
               note.status.isOpen ? 'Erledigt' : 'Wieder offen',
             )
           : const SizedBox.shrink(),
-      secondaryBackground: background(
-        Alignment.centerRight,
-        scheme.onSurfaceVariant,
-        Icons.archive_outlined,
-        'Archivieren',
-      ),
+      // Im Archiv (und in Suchtreffern von dort) holt dieselbe Geste den
+      // Zettel zurück, statt ihn ein zweites Mal zu archivieren.
+      secondaryBackground: archived
+          ? background(
+              Alignment.centerRight,
+              scheme.onSurfaceVariant,
+              Icons.unarchive_outlined,
+              'Zurückholen',
+            )
+          : background(
+              Alignment.centerRight,
+              scheme.onSurfaceVariant,
+              Icons.archive_outlined,
+              'Archivieren',
+            ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
           await NoteActions.setDone(
@@ -620,6 +630,8 @@ class _SwipeActions extends ConsumerWidget {
             note,
             done: note.status.isOpen,
           );
+        } else if (archived) {
+          await NoteActions.unarchive(context, ref, note);
         } else {
           await NoteActions.archive(context, ref, note);
         }

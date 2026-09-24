@@ -54,6 +54,10 @@ abstract final class NoteActions {
     WidgetRef ref,
     NoteRow note,
   ) async {
+    // Schon archiviert: nichts tun. Sonst bekäme der Zettel einen neuen
+    // Archivzeitpunkt, und „Rückgängig“ holte ihn aufs Board zurück, wo er
+    // vorher gar nicht lag.
+    if (note.archivedAt != null) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
     final repository = ref.read(noteRepositoryProvider);
     await repository.archive(note.id);
@@ -62,6 +66,25 @@ abstract final class NoteActions {
         messenger,
         'Archiviert: ${_short(note)}',
         onUndo: () => repository.unarchive(note.id),
+      );
+    }
+  }
+
+  /// Aus dem Archiv zurück aufs Board.
+  static Future<void> unarchive(
+    BuildContext context,
+    WidgetRef ref,
+    NoteRow note,
+  ) async {
+    if (note.archivedAt == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final repository = ref.read(noteRepositoryProvider);
+    await repository.unarchive(note.id);
+    if (messenger != null) {
+      showUndoSnackBar(
+        messenger,
+        'Zurückgeholt: ${_short(note)}',
+        onUndo: () => repository.archive(note.id),
       );
     }
   }
@@ -91,10 +114,9 @@ abstract final class NoteActions {
   ) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     final repository = ref.read(noteRepositoryProvider);
-    final from = note.projectId;
-    await repository.moveToProject(note.id, projectId);
-    if (messenger == null) return;
     final projects = ref.read(projectsProvider).value ?? const [];
+    final move = await repository.moveToProject(note.id, projectId);
+    if (messenger == null || move == null) return;
     final name = projectId == null
         ? 'Inbox'
         : projects.where((p) => p.id == projectId).firstOrNull?.name ??
@@ -102,7 +124,7 @@ abstract final class NoteActions {
     showUndoSnackBar(
       messenger,
       'Nach „$name“ verschoben',
-      onUndo: () => repository.moveToProject(note.id, from),
+      onUndo: () => repository.undoMove(move),
     );
   }
 

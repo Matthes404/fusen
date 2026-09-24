@@ -17,6 +17,12 @@ void showUndoSnackBar(
       SnackBar(
         content: Text(message),
         duration: duration,
+        // Mit Aktion bliebe die Meldung seit Flutter 3.47 stehen, bis man sie
+        // wegwischt – und „Rückgängig“ ließe sich Minuten später noch auf
+        // einen längst veränderten Stand anwenden. Nur wer mit Screenreader
+        // bedient, braucht die Zeit, um die Aktion zu erreichen.
+        persist:
+            MediaQuery.maybeAccessibleNavigationOf(messenger.context) ?? false,
         action: SnackBarAction(label: 'Rückgängig', onPressed: onUndo),
       ),
     );

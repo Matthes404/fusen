@@ -56,7 +56,12 @@ class OverviewView extends ConsumerWidget {
     final archived = ref.watch(archivedProjectsProvider).value ?? const [];
 
     final gutter = MediaQuery.sizeOf(context).width < 600 ? 16.0 : 32.0;
-    final open = progress.values.fold<int>(0, (sum, p) => sum + p.open);
+    // Nur die Projekte, die hier auch stehen – sonst zählte der Satz „3
+    // offene Zettel in 2 Projekten“ die Inbox und archivierte Projekte mit.
+    final open = projects.fold<int>(
+      0,
+      (sum, project) => sum + (progress[project.id]?.open ?? 0),
+    );
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
     // Auf dem Handy ist die Übersicht die Startseite – dort kommen zuerst
@@ -669,14 +674,15 @@ class _NewProjectTile extends ConsumerWidget {
     return InkWell(
       borderRadius: Radii.mdAll,
       onTap: () async {
+        // Vor dem Warten holen: dreht man das Handy, während der Dialog
+        // offen ist, kann die Kachel danach schon verschwunden sein.
+        final repository = ref.read(projectRepositoryProvider);
         final name = await promptForProjectName(
           context,
           title: 'Neues Projekt',
         );
         if (name == null) return;
-        final project = await ref
-            .read(projectRepositoryProvider)
-            .create(name: name);
+        final project = await repository.create(name: name);
         onCreated(project.id);
       },
       child: DottedBox(

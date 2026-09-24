@@ -121,6 +121,47 @@ void main() {
       expect((await notes.findById(incoming.id))!.status, NoteStatus.open);
     });
 
+    test(
+      'Verschieben lässt sich samt verdrängter Anweisung zurücknehmen',
+      () async {
+        final home = await projects.create(name: 'Praktikum');
+        final target = await projects.create(name: 'Studium');
+        final resident = await notes.create(
+          projectId: target.id,
+          type: NoteType.instruction,
+          body: 'gilt im Studium',
+        );
+        await notes.create(projectId: home.id, type: NoteType.step, body: 'a');
+        final moved = await notes.create(
+          projectId: home.id,
+          type: NoteType.instruction,
+          body: 'gilt im Praktikum',
+        );
+        final before = (await notes.findById(moved.id))!;
+
+        final move = await notes.moveToProject(moved.id, target.id);
+        expect(move!.retiredInstructionIds, [resident.id]);
+        expect((await notes.findById(resident.id))!.status, NoteStatus.done);
+
+        await notes.undoMove(move);
+
+        final back = (await notes.findById(moved.id))!;
+        expect(back.projectId, home.id);
+        expect(back.sortOrder, before.sortOrder);
+        expect(back.status, NoteStatus.open);
+        final restored = (await notes.findById(resident.id))!;
+        expect(restored.status, NoteStatus.open);
+        expect(restored.closedAt, isNull);
+      },
+    );
+
+    test('Verschieben ins selbe Projekt ändert nichts', () async {
+      final project = await projects.create(name: 'Chess');
+      final note = await notes.create(projectId: project.id, body: 'x');
+
+      expect(await notes.moveToProject(note.id, project.id), isNull);
+    });
+
     test('eine alte Anweisung wieder öffnen verdrängt die aktuelle', () async {
       final project = await projects.create(name: 'Chess');
       final first = await notes.create(
@@ -721,6 +762,75 @@ void main() {
 
       expect(prioritized.map((n) => n.id), [must.id, should.id, could.id]);
     });
+
+    test('archivierte Projekte bleiben aus der Übersicht heraus', () async {
+      final active = await projects.create(name: 'Aktiv');
+      final shelved = await projects.create(name: 'Abgelegt');
+      final visible = await notes.create(
+        projectId: active.id,
+        type: NoteType.step,
+        body: 'sichtbar',
+        priority: NotePriority.must,
+      );
+      final inbox = await notes.create(
+        type: NoteType.idea,
+        body: 'aus der Inbox',
+        priority: NotePriority.could,
+      );
+      await notes.create(
+        projectId: shelved.id,
+        type: NoteType.step,
+        body: 'weggeräumt',
+        priority: NotePriority.must,
+      );
+      final closedThere = await notes.create(
+        projectId: shelved.id,
+        type: NoteType.step,
+        body: 'dort erledigt',
+      );
+      await notes.setStatus(closedThere.id, NoteStatus.done);
+      final closedHere = await notes.create(
+        projectId: active.id,
+        type: NoteType.step,
+        body: 'hier erledigt',
+      );
+      await notes.setStatus(closedHere.id, NoteStatus.done);
+      await projects.archive(shelved.id);
+
+      final prioritized = await notes.watchPrioritized().first;
+      final closed = await notes.watchRecentlyClosed().first;
+
+      expect(prioritized.map((n) => n.id), [visible.id, inbox.id]);
+      expect(closed.map((n) => n.id), [closedHere.id]);
+    });
+
+    test(
+      'bei gleicher Priorität kommt das zuletzt Bearbeitete zuerst',
+      () async {
+        // Mehr als 32, weil Darts sort ab da nicht mehr stabil ist – die
+        // Reihenfolge innerhalb einer Priorität ginge verloren.
+        final created = <NoteRow>[];
+        for (var i = 0; i < 40; i++) {
+          clock.advance(const Duration(minutes: 1));
+          created.add(
+            await notes.create(
+              type: NoteType.step,
+              body: 'Schritt $i',
+              priority: i.isEven ? NotePriority.should : NotePriority.must,
+            ),
+          );
+        }
+
+        final prioritized = await notes.watchPrioritized(limit: 40).first;
+
+        final must = created.where((n) => n.priority == NotePriority.must);
+        final should = created.where((n) => n.priority == NotePriority.should);
+        expect(prioritized.map((n) => n.id), [
+          ...must.map((n) => n.id).toList().reversed,
+          ...should.map((n) => n.id).toList().reversed,
+        ]);
+      },
+    );
 
     test('zuletzt Erledigtes, neuestes zuerst', () async {
       final first = await notes.create(type: NoteType.step, body: 'eins');

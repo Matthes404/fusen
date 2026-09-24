@@ -19,6 +19,7 @@ import '../../ui/widgets/note_card.dart' show formatTimestamp;
 import '../../ui/widgets/undo.dart';
 import '../attachments/image_input.dart';
 import 'note_actions.dart';
+import '../../ui/widgets/project_menu_items.dart';
 
 /// Öffnet den Zettel zum Bearbeiten – auf breiten Fenstern als Dialog,
 /// auf dem Handy als Blatt von unten.
@@ -114,7 +115,11 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
     final projects = ref.watch(projectsProvider).value ?? const [];
 
     return DropTarget(
-      enable: ImageInput.supportsDrop,
+      // Liegt die Schnelleingabe darüber, gehört ein hineingezogenes Bild
+      // ihr – nicht zusätzlich dem Zettel dahinter.
+      enable:
+          ImageInput.supportsDrop &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
       onDragDone: (details) {
@@ -142,6 +147,8 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
     bool locked,
     List<ProjectRow> projects,
   ) {
+    final archivedProjects =
+        ref.watch(archivedProjectsProvider).value ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -233,14 +240,12 @@ class _NoteEditorState extends ConsumerState<NoteEditor> {
               const _FieldLabel('Projekt'),
               DropdownButtonFormField<String?>(
                 initialValue: _projectId,
-                items: [
-                  const DropdownMenuItem<String?>(child: Text('Inbox')),
-                  for (final project in projects)
-                    DropdownMenuItem<String?>(
-                      value: project.id,
-                      child: Text(project.name),
-                    ),
-                ],
+                isExpanded: true,
+                items: projectMenuItems(
+                  projects: projects,
+                  archived: archivedProjects,
+                  selected: _projectId,
+                ),
                 onChanged: (value) => setState(() => _projectId = value),
               ),
               const SizedBox(height: Insets.xl),
