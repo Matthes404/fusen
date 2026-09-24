@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/db/database.dart';
+import '../../data/models/note_status.dart';
 import '../../data/models/note_type.dart';
 import '../../ui/note_style.dart';
 import '../../ui/palette.dart';
@@ -91,9 +92,19 @@ class _SearchViewState extends ConsumerState<SearchView> {
           icon: draft.type!.icon,
           color: draft.type!.color(scheme),
         ),
+      if (draft.priority != null)
+        MetaChip(
+          label: priorityLabel(draft.type ?? NoteType.step, draft.priority!),
+          icon: draft.priority!.icon,
+          color: draft.priority!.color(scheme),
+        ),
     ];
 
-    final idle = terms.isEmpty && draft.type == null && project == null;
+    final idle =
+        terms.isEmpty &&
+        draft.type == null &&
+        draft.priority == null &&
+        project == null;
     final gutter = pageGutter(context);
 
     return Scaffold(
@@ -162,6 +173,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                       projectId: project?.id,
                       projectFilterActive: draft.projectQuery != null,
                       type: draft.type,
+                      priority: draft.priority,
                       includeArchived: _includeArchived,
                     ),
             ),
@@ -235,6 +247,7 @@ class _Results extends ConsumerWidget {
     required this.projectId,
     required this.projectFilterActive,
     required this.type,
+    required this.priority,
     required this.includeArchived,
   });
 
@@ -242,6 +255,7 @@ class _Results extends ConsumerWidget {
   final String? projectId;
   final bool projectFilterActive;
   final NoteType? type;
+  final NotePriority? priority;
   final bool includeArchived;
 
   @override
@@ -264,6 +278,7 @@ class _Results extends ConsumerWidget {
             projectId: projectId,
             projectFilterActive: projectFilterActive,
             type: type,
+            priority: priority,
             includeArchived: includeArchived,
           ),
       builder: (context, snapshot) {
@@ -291,7 +306,7 @@ class _Results extends ConsumerWidget {
           itemCount: notes.length,
           separatorBuilder: (_, _) => const SizedBox(height: Insets.md),
           itemBuilder: (context, index) =>
-              NoteCard(note: notes[index], showProject: true),
+              NoteCard(note: notes[index], showProject: true, showType: true),
         );
       },
     );
@@ -305,6 +320,7 @@ class _SearchHint extends StatelessWidget {
   static const _examples = [
     ('nnue export', 'zwei Wörter, beide müssen vorkommen'),
     ('@chess !anf', 'Anforderungen eines Projekts'),
+    ('!hoch', 'alles mit hoher Priorität, quer durch die Projekte'),
     ('#deadline', 'alles mit diesem Schlagwort'),
   ];
 

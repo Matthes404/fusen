@@ -218,6 +218,46 @@ class NoteRepository {
     });
   }
 
+  /// Die gerade geltende Anweisung jedes Projekts (`null` = Inbox).
+  Stream<Map<String?, NoteRow>> watchCurrentInstructions() {
+    return (_db.select(_db.notes)..where(
+          (t) =>
+              t.deletedAt.isNull() &
+              t.archivedAt.isNull() &
+              t.type.equalsValue(NoteType.instruction) &
+              t.status.equalsValue(NoteStatus.open),
+        ))
+        .watch()
+        .map((notes) => {for (final note in notes) note.projectId: note});
+  }
+
+  /// Der nächste offene Schritt jedes Projekts – wichtigster zuerst, bei
+  /// gleicher Priorität der, der in der Liste oben steht.
+  Stream<Map<String?, NoteRow>> watchNextSteps() {
+    return (_db.select(_db.notes)
+          ..where(
+            (t) =>
+                t.deletedAt.isNull() &
+                t.archivedAt.isNull() &
+                t.type.equalsValue(NoteType.step) &
+                t.status.equalsValue(NoteStatus.open),
+          )
+          ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+        .watch()
+        .map((steps) {
+          final next = <String?, NoteRow>{};
+          for (final step in steps) {
+            final current = next[step.projectId];
+            if (current == null ||
+                NotePriority.rankOf(step.priority) <
+                    NotePriority.rankOf(current.priority)) {
+              next[step.projectId] = step;
+            }
+          }
+          return next;
+        });
+  }
+
   static final List<NoteType> _workTypes = NoteType.values
       .where((type) => type.isWorkItem)
       .toList(growable: false);
@@ -466,14 +506,16 @@ class NoteRepository {
   /// Volltextsuche über alle Zettel.
   ///
   /// Die Eingabe versteht dieselben Kurzbefehle wie die Schnelleingabe:
-  /// `@projekt` und `!typ` müssen vorher aufgelöst und als [projectId] bzw.
-  /// [type] übergeben werden, `#tag` und freie Wörter landen in [terms].
+  /// `@projekt`, `!typ` und `!hoch` müssen vorher aufgelöst und als
+  /// [projectId], [type] bzw. [priority] übergeben werden, `#tag` und freie
+  /// Wörter landen in [terms].
   /// Alle Begriffe müssen zutreffen (UND).
   Stream<List<NoteRow>> search({
     List<String> terms = const [],
     String? projectId,
     bool projectFilterActive = false,
     NoteType? type,
+    NotePriority? priority,
     bool includeArchived = true,
   }) {
     final needles = terms
@@ -490,6 +532,9 @@ class NoteRepository {
     }
     if (type != null) {
       query.where((t) => t.type.equalsValue(type));
+    }
+    if (priority != null) {
+      query.where((t) => t.priority.equalsValue(priority));
     }
     for (final needle in needles) {
       query.where((t) => t.searchText.contains(needle));

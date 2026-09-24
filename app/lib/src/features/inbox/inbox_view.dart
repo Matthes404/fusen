@@ -7,6 +7,7 @@ import '../../ui/widgets/empty_state.dart';
 import '../../ui/widgets/note_card.dart';
 import '../../ui/widgets/page_body.dart';
 import '../capture/capture_sheet.dart';
+import '../capture/list_import_dialog.dart';
 import '../project/project_archive_page.dart';
 import '../project/project_view.dart' show PageHeader;
 
@@ -32,6 +33,11 @@ class InboxView extends ConsumerWidget {
           _ => '$count Zettel warten auf ein Projekt',
         },
         actions: [
+          IconButton(
+            tooltip: 'Aus einer Liste anlegen',
+            icon: const Icon(Icons.playlist_add_rounded),
+            onPressed: () => showListImportDialog(context),
+          ),
           IconButton(
             tooltip: 'Zettel ablegen',
             icon: const Icon(Icons.add),
@@ -78,7 +84,10 @@ class InboxView extends ConsumerWidget {
               ),
               itemCount: notes.length,
               separatorBuilder: (_, _) => const SizedBox(height: Insets.md),
-              itemBuilder: (context, index) => NoteCard(note: notes[index]),
+              // Hier liegt Gemischtes: die Marke sagt, was ein Zettel ist,
+              // und „Einsortieren“ bringt ihn mit zwei Tipps ins Projekt.
+              itemBuilder: (context, index) =>
+                  NoteCard(note: notes[index], showType: true, triage: true),
             ),
           );
         },

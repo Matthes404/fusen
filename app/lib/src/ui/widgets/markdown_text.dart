@@ -13,10 +13,14 @@ class MarkdownText extends StatelessWidget {
     super.key,
     this.style,
     this.selectable = true,
+    this.struck = false,
   });
 
   final String data;
   final TextStyle? style;
+
+  /// Durchgestrichen – für erledigte Zettel ohne Titel.
+  final bool struck;
 
   /// Auf einem Zettel in der Liste steht die Auswahl im Weg: sie schluckt
   /// den Tipp, mit dem man den Zettel öffnet. Zum Kopieren gibt es den
@@ -28,7 +32,13 @@ class MarkdownText extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final tokens = context.paper;
-    final base = style ?? theme.textTheme.bodyMedium;
+    final plain = style ?? theme.textTheme.bodyMedium;
+    final base = struck
+        ? plain?.copyWith(
+            decoration: TextDecoration.lineThrough,
+            decorationColor: scheme.onSurfaceVariant,
+          )
+        : plain;
     final codeSurface = scheme.onSurface.withValues(
       alpha: theme.brightness == Brightness.light ? 0.05 : 0.09,
     );

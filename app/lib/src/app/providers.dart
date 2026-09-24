@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/database.dart';
 import '../data/db/settings_store.dart';
+import '../data/repositories/attachment_repository.dart';
+import '../data/repositories/capture_service.dart';
 import '../data/repositories/note_repository.dart';
 import '../data/repositories/project_repository.dart';
 import '../sync/pocketbase_backend.dart';
@@ -34,6 +37,21 @@ final noteRepositoryProvider = Provider<NoteRepository>(
   (ref) => NoteRepository(
     ref.watch(databaseProvider),
     deviceId: ref.watch(deviceIdProvider),
+  ),
+);
+
+final attachmentRepositoryProvider = Provider<AttachmentRepository>(
+  (ref) => AttachmentRepository(
+    ref.watch(databaseProvider),
+    deviceId: ref.watch(deviceIdProvider),
+  ),
+);
+
+final captureServiceProvider = Provider<CaptureService>(
+  (ref) => CaptureService(
+    database: ref.watch(databaseProvider),
+    projects: ref.watch(projectRepositoryProvider),
+    notes: ref.watch(noteRepositoryProvider),
   ),
 );
 
@@ -90,6 +108,44 @@ final archiveProvider = StreamProvider.family<List<NoteRow>, String?>(
 
 final noteProvider = StreamProvider.family<NoteRow?, String>(
   (ref, id) => ref.watch(noteRepositoryProvider).watchNote(id),
+);
+
+/// Die Bilder eines Zettels.
+final noteAttachmentsProvider =
+    StreamProvider.family<List<AttachmentRow>, String>(
+      (ref, noteId) =>
+          ref.watch(attachmentRepositoryProvider).watchForNote(noteId),
+    );
+
+/// Die Bilddaten eines Anhangs – `null`, solange sie noch unterwegs sind.
+final attachmentBytesProvider = StreamProvider.family<Uint8List?, String>(
+  (ref, attachmentId) =>
+      ref.watch(attachmentRepositoryProvider).watchBytes(attachmentId),
+);
+
+/// Offene, priorisierte Arbeitszettel aus allen Projekten.
+final prioritizedProvider = StreamProvider<List<NoteRow>>(
+  (ref) => ref.watch(noteRepositoryProvider).watchPrioritized(),
+);
+
+/// Zuletzt abgeschlossene Arbeitszettel aus allen Projekten.
+final recentlyClosedProvider = StreamProvider<List<NoteRow>>(
+  (ref) => ref.watch(noteRepositoryProvider).watchRecentlyClosed(),
+);
+
+/// Offen und erledigt pro Projekt – `null` ist die Inbox.
+final progressProvider = StreamProvider<Map<String?, NoteProgress>>(
+  (ref) => ref.watch(noteRepositoryProvider).watchProgress(),
+);
+
+/// Die gerade geltende Anweisung pro Projekt.
+final currentInstructionsProvider = StreamProvider<Map<String?, NoteRow>>(
+  (ref) => ref.watch(noteRepositoryProvider).watchCurrentInstructions(),
+);
+
+/// Der nächste offene Schritt pro Projekt.
+final nextStepsProvider = StreamProvider<Map<String?, NoteRow>>(
+  (ref) => ref.watch(noteRepositoryProvider).watchNextSteps(),
 );
 
 // --- Oberfläche -----------------------------------------------------------

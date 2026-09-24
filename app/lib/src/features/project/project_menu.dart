@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../data/repositories/project_repository.dart';
 import '../../ui/tokens.dart';
+import '../capture/list_import_dialog.dart';
 import 'project_archive_page.dart';
 
 /// Projekt umbenennen, einfärben, archivieren, löschen.
@@ -25,6 +26,11 @@ class ProjectMenu extends ConsumerWidget {
             controller.isOpen ? controller.close() : controller.open(),
       ),
       menuChildren: [
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.playlist_add_rounded, size: 18),
+          onPressed: () => showListImportDialog(context, projectId: project.id),
+          child: const Text('Aus einer Liste anlegen …'),
+        ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.drive_file_rename_outline, size: 18),
           onPressed: () => renameProject(context, ref, project),

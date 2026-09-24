@@ -83,10 +83,19 @@ extension NoteTypeStyle on NoteType {
 }
 
 extension NotePriorityStyle on NotePriority {
+  /// Die Bezeichnung, wie sie bei Anforderungen steht (Muss / Soll / Kann).
+  /// Für alle anderen Typen: [priorityLabel].
   String get label => switch (this) {
     NotePriority.must => 'Muss',
     NotePriority.should => 'Soll',
     NotePriority.could => 'Kann',
+  };
+
+  /// Pfeile wie in einem Ticketsystem: je höher, desto wichtiger.
+  IconData get icon => switch (this) {
+    NotePriority.must => Icons.keyboard_double_arrow_up_rounded,
+    NotePriority.should => Icons.keyboard_arrow_up_rounded,
+    NotePriority.could => Icons.keyboard_arrow_down_rounded,
   };
 
   Color color(ColorScheme scheme) {
@@ -104,6 +113,20 @@ extension NotePriorityStyle on NotePriority {
   bool get isEmphasised => this != NotePriority.could;
 }
 
+/// Die Priorität so, wie sie beim Typ heißt.
+///
+/// Anforderungen behalten Muss / Soll / Kann aus dem Konzept – dort ist das
+/// eine Aussage über das Ergebnis. Für Schritte, Fragen und Ideen wäre
+/// „Muss“ schief; dieselben drei Stufen heißen dort Hoch / Mittel / Niedrig.
+String priorityLabel(NoteType type, NotePriority priority) {
+  if (type == NoteType.requirement) return priority.label;
+  return switch (priority) {
+    NotePriority.must => 'Hoch',
+    NotePriority.should => 'Mittel',
+    NotePriority.could => 'Niedrig',
+  };
+}
+
 /// Statusbezeichnungen hängen vom Typ ab: eine Anforderung ist „umgesetzt“,
 /// ein Schritt „erledigt“.
 String statusLabel(NoteType type, NoteStatus status) =>
@@ -111,8 +134,16 @@ String statusLabel(NoteType type, NoteStatus status) =>
       (_, NoteStatus.open) when type == NoteType.instruction => 'gilt gerade',
       (_, NoteStatus.open) => 'offen',
       (NoteType.requirement, NoteStatus.done) => 'umgesetzt',
+      (NoteType.idea, NoteStatus.done) => 'umgesetzt',
       (NoteType.question, NoteStatus.done) => 'beantwortet',
       (NoteType.instruction, NoteStatus.done) => 'im Verlauf',
       (_, NoteStatus.done) => 'erledigt',
       (_, NoteStatus.discarded) => 'verworfen',
     };
+
+/// Die Überschrift über dem, was in einem Bereich abgeschlossen ist.
+String closedGroupLabel(NoteType type) => switch (type) {
+  NoteType.requirement || NoteType.idea => 'Umgesetzt oder verworfen',
+  NoteType.question => 'Geklärt',
+  _ => 'Erledigt',
+};

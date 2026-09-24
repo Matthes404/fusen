@@ -33,6 +33,9 @@ class _FusenAppState extends ConsumerState<FusenApp> {
     // Erst abgleichen, wenn etwas zu sehen ist – der Start soll nicht auf
     // dem Netz warten.
     unawaitedSync();
+    // Bilddaten entfernter Bilder aufräumen, sobald „Rückgängig“ keine Rolle
+    // mehr spielt – die Beschreibung bleibt als Tombstone für den Sync.
+    ref.read(attachmentRepositoryProvider).purgeDeletedData().ignore();
 
     if (!isDesktop) return;
     final capture = DesktopCapture(

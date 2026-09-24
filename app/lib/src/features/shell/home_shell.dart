@@ -7,6 +7,8 @@ import '../../ui/palette.dart';
 import '../../ui/tokens.dart';
 import '../capture/capture_sheet.dart';
 import '../inbox/inbox_view.dart';
+import '../overview/overview_view.dart';
+import '../project/archived_projects_page.dart';
 import '../project/project_view.dart';
 import '../search/search_view.dart';
 import '../settings/settings_view.dart';
@@ -31,7 +33,7 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class HomeShellState extends ConsumerState<HomeShell> {
-  Destination _selected = const ProjectDestination(null);
+  Destination _selected = const OverviewDestination();
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +68,7 @@ class HomeShellState extends ConsumerState<HomeShell> {
                 selected: _selected,
                 onSelect: _select,
                 onCapture: openCapture,
+                onOpenArchived: _openArchived,
               ),
             ),
           ),
@@ -88,17 +91,21 @@ class HomeShellState extends ConsumerState<HomeShell> {
     );
   }
 
+  /// Auf dem Handy ist die Übersicht die Startseite: Projekte als Kacheln,
+  /// Suche und Einstellungen im Kopf, der Ablegen-Knopf unten rechts.
   Widget _buildNarrow(BuildContext context) {
+    final syncEnabled = ref.watch(syncEnabledProvider).value ?? false;
     return Scaffold(
-      backgroundColor: context.paper.sidebar,
-      body: SafeArea(
-        bottom: false,
-        child: ProjectSidebar(
-          selected: _selected,
-          onSelect: _open,
-          onCapture: openCapture,
-          wide: false,
-        ),
+      body: OverviewView(
+        onOpenProject: (id) => _open(ProjectDestination(id)),
+        onOpenInbox: () => _open(const ProjectDestination(null)),
+        onOpenSearch: () => _open(const SearchDestination()),
+        onOpenSettings: () => _open(const SettingsDestination()),
+        onOpenArchived: _openArchived,
+        headerActions: [
+          if (syncEnabled)
+            SyncIndicator(outcome: ref.watch(syncControllerProvider)),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: openCapture,
@@ -110,6 +117,11 @@ class HomeShellState extends ConsumerState<HomeShell> {
 
   Widget _detailFor(Destination destination) {
     return switch (destination) {
+      OverviewDestination() => OverviewView(
+        onOpenProject: (id) => _select(ProjectDestination(id)),
+        onOpenInbox: () => _select(const ProjectDestination(null)),
+        onOpenArchived: _openArchived,
+      ),
       ProjectDestination(:final projectId) =>
         projectId == null
             ? const InboxView()
@@ -117,6 +129,19 @@ class HomeShellState extends ConsumerState<HomeShell> {
       SearchDestination() => const SearchView(),
       SettingsDestination() => const SettingsView(),
     };
+  }
+
+  void _openArchived() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ArchivedProjectsPage(
+          onOpenProject: (id) {
+            Navigator.of(context).pop();
+            _open(ProjectDestination(id));
+          },
+        ),
+      ),
+    );
   }
 
   void _select(Destination destination) {

@@ -32,7 +32,10 @@ dependencies:
   # IDs
   uuid: ^4.6.0
 
-  # Bilder verkleinern, bevor sie gespeichert und abgeglichen werden
+  # Bilder: auswählen, einfügen, hineinziehen, verkleinern
+  image_picker: ^1.2.3
+  pasteboard: ^0.5.0
+  desktop_drop: ^0.8.4
   image: ^4.10.1
 
   # Desktop-Integration (globaler Hotkey, Fenstersteuerung)

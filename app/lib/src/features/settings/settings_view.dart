@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/providers.dart';
+import '../../app/version.dart';
+import '../../data/models/note_type.dart';
 import '../../sync/sync_backend.dart';
 import '../../sync/sync_service.dart';
+import '../../ui/note_style.dart';
 import '../../ui/theme.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets/fusen_logo.dart';
@@ -361,6 +365,26 @@ class _SyncStatusTile extends ConsumerWidget {
                   style: theme.textTheme.bodySmall,
                 ),
               ],
+              if (outcome.warning != null) ...[
+                const SizedBox(height: Insets.xs),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: NoteType.question.color(scheme),
+                    ),
+                    const SizedBox(width: Insets.xs),
+                    Expanded(
+                      child: Text(
+                        outcome.warning!,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -409,32 +433,71 @@ class _Banner extends StatelessWidget {
   }
 }
 
-/// Der Abbinder – die Marke einmal groß, dazu der Satz, woher der Name
-/// kommt.
+/// Der Abbinder – das Symbol einmal groß, dazu der Satz, woher der Name
+/// kommt, die Version und die Lizenzen.
 class _About extends StatelessWidget {
   const _About();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    const icon = ClipRRect(
+      borderRadius: BorderRadius.all(Radius.circular(12)),
+      child: SizedBox.square(
+        dimension: 52,
+        child: CustomPaint(painter: FusenIconPainter()),
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.only(top: Insets.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const FusenLogo(size: 32),
+          icon,
           const SizedBox(width: Insets.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Fusen', style: theme.textTheme.titleSmall),
-                const SizedBox(height: 2),
+                Text('Version $appVersion', style: theme.textTheme.labelMedium),
+                const SizedBox(height: Insets.xs),
                 Text(
                   'Fusen (付箋) ist das japanische Wort für Haftnotiz. '
                   'Open Source unter der MIT-Lizenz.',
                   style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: Insets.sm),
+                Wrap(
+                  spacing: Insets.sm,
+                  runSpacing: Insets.xs,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.parse('$repositoryUrl/releases'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.download_rounded, size: 16),
+                      label: const Text('Neue Versionen'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => showLicensePage(
+                        context: context,
+                        applicationName: 'Fusen',
+                        applicationVersion: appVersion,
+                        applicationIcon: const Padding(
+                          padding: EdgeInsets.all(Insets.md),
+                          child: icon,
+                        ),
+                        applicationLegalese:
+                            'MIT-Lizenz. Schriften: Plus Jakarta Sans und '
+                            'JetBrains Mono, SIL Open Font License.',
+                      ),
+                      icon: const Icon(Icons.gavel_rounded, size: 16),
+                      label: const Text('Lizenzen'),
+                    ),
+                  ],
                 ),
               ],
             ),
