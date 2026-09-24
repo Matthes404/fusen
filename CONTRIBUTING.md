@@ -105,6 +105,11 @@ Was dabei entsteht und wie man es installiert, steht in der
 `.github/workflows/package.yml`, das auch die Pakete zum Ausprobieren
 (`build.yml`) erzeugt.
 
+Beim allerersten Release legt GitHub das Server-Image als neues Paket an –
+unter Umständen als privates. Dann einmal unter **Packages → fusen-server →
+Package settings** die Sichtbarkeit auf *Public* stellen, sonst scheitert
+`docker pull` ohne Anmeldung.
+
 ### Android-Signierschlüssel (einmalig)
 
 Android installiert ein Update nur, wenn es mit demselben Schlüssel signiert
