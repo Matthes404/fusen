@@ -1,8 +1,28 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Der Schlüssel, mit dem Release-APKs signiert werden. Android nimmt ein
+// Update nur an, wenn es mit demselben Schlüssel signiert ist wie die
+// installierte Version – ein wechselnder Schlüssel hieße: deinstallieren und
+// dabei die lokalen Zettel verlieren.
+//
+// Lokal steht er in android/key.properties (nicht im Repository), in der
+// Release-Pipeline kommt er über Umgebungsvariablen aus den Secrets.
+// Fehlt beides, bleibt es beim Debug-Schlüssel, damit
+// `flutter run --release` ohne Einrichtung funktioniert.
+val keyProperties =
+    Properties().apply {
+        val file = rootProject.file("key.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
+
+fun signingValue(property: String, environment: String): String? =
+    keyProperties.getProperty(property) ?: System.getenv(environment)
 
 android {
     namespace = "dev.fusen.fusen"
@@ -29,11 +49,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        val storePath = signingValue("storeFile", "FUSEN_KEYSTORE")
+        if (storePath != null) {
+            create("release") {
+                storeFile = file(storePath)
+                storePassword = signingValue("storePassword", "FUSEN_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "FUSEN_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "FUSEN_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }

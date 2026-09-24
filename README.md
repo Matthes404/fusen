@@ -11,6 +11,24 @@ Gerät wieder auftauchen.
 Das ausführliche Konzept steht in [docs/konzept.md](docs/konzept.md), die
 technischen Entscheidungen in [docs/architektur.md](docs/architektur.md).
 
+## Installieren
+
+Fertige Pakete für alle Plattformen hängen am
+[neuesten Release](https://github.com/Matthes404/fusen/releases/latest):
+
+| Gerät | Datei | So geht's |
+|---|---|---|
+| Android | `fusen-<version>-android.apk` | auf dem Handy öffnen, Installation aus dem Browser erlauben |
+| iPhone, iPad | `fusen-<version>-ios-unsigniert.ipa` | unsigniert: mit [AltStore](https://altstore.io) oder [Sideloadly](https://sideloadly.io) über die eigene Apple-ID |
+| Windows 10/11 | `fusen-<version>-windows-setup.exe` | Installer, braucht keine Administratorrechte; alternativ die `.zip` entpacken |
+| macOS | `fusen-<version>-macos.dmg` | Fusen auf „Applications“ ziehen; beim ersten Start unter *Datenschutz & Sicherheit* „Dennoch öffnen“ |
+| Debian, Ubuntu, Mint | `fusen-<version>-linux-amd64.deb` | `sudo apt install ./fusen-<version>-linux-amd64.deb` |
+| anderes Linux | `fusen-<version>-linux-x64.tar.gz` | entpacken und `fusen` starten; braucht GTK 3 und libkeybinder-3.0 |
+
+Keine der Dateien ist bei Apple, Google oder Microsoft hinterlegt – daher
+die Rückfragen beim ersten Öffnen. Wie ein Release entsteht, steht in
+[CONTRIBUTING.md](CONTRIBUTING.md#releases).
+
 ## Was drin ist
 
 * **Schnelleingabe** – ein Textfeld, sonst nichts. `@projekt` ordnet zu,
@@ -75,8 +93,10 @@ flutter analyze
 flutter test
 ```
 
-Fertige Builds hängen an jedem Workflow-Lauf auf `main` – siehe
-[Actions](../../actions). Man muss also nicht lokal bauen, um etwas
+Installierbare Pakete zum Ausprobieren baut der Workflow *Builds* nach jedem
+Push auf `main` und auf jedem Branch, der Natives ändert (Plugins,
+Plattform-Einstellungen, Paketierung) – sie hängen als Artefakte am Lauf,
+siehe [Actions](../../actions). Man muss also nicht lokal bauen, um etwas
 auszuprobieren.
 
 ## Sync einrichten

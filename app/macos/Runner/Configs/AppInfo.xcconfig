@@ -5,10 +5,12 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = fusen
+// Großgeschrieben, weil macOS ihn im Finder, im Dock und in der Menüleiste
+// zeigt; die Daten hängen am Bundle-Identifier und bleiben, wo sie sind.
+PRODUCT_NAME = Fusen
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = dev.fusen.fusen
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 dev.fusen. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 the Fusen contributors
