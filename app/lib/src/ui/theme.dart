@@ -21,20 +21,18 @@ ButtonStyle brandButtonStyle() => FilledButton.styleFrom(
   iconColor: fusenInk,
 );
 
-/// Schriften, die die App möglichst gut aussehen lässt – die erste, die auf
-/// dem System vorhanden ist, gewinnt. Fehlt alles, bleibt es bei der
-/// Systemschrift; ein eigenes Schriftpaket ist der App nicht wert.
-const List<String> _fontStack = [
-  'Inter',
-  'SF Pro Text',
-  'Segoe UI Variable Text',
-  'Segoe UI',
-  'Noto Sans',
-  'DejaVu Sans',
-];
+/// Die Schrift der App, mitgeliefert unter `assets/fonts`.
+///
+/// Vorher kam die Schrift vom System – unter Linux war das meist DejaVu,
+/// und die App sah auf jedem Gerät anders und nirgends nach sich selbst
+/// aus. Plus Jakarta Sans ist freundlich, ohne verspielt zu sein, und bleibt
+/// auch klein gut lesbar.
+const String fusenFontFamily = 'PlusJakartaSans';
 
-/// Für Code, Zeitstempel und Tastenkürzel.
-const String monoFamily = 'monospace';
+/// Für Code, Zeitstempel und Tastenkürzel – ebenfalls mitgeliefert: eine
+/// Familie namens „monospace“ kennt Windows gar nicht und setzt dann eine
+/// Proportionalschrift ein.
+const String monoFamily = 'JetBrainsMono';
 
 ThemeData fusenTheme(Brightness brightness) {
   final light = brightness == Brightness.light;
@@ -51,8 +49,8 @@ ThemeData fusenTheme(Brightness brightness) {
     useMaterial3: true,
     brightness: brightness,
     colorScheme: scheme,
+    fontFamily: fusenFontFamily,
     textTheme: _textTheme(scheme),
-    fontFamilyFallback: _fontStack,
   );
   final text = base.textTheme;
 
@@ -390,9 +388,9 @@ TextTheme _textTheme(ColorScheme scheme) {
   final ink = scheme.onSurface;
   final muted = scheme.onSurfaceVariant;
 
-  // Die Schriftliste hängt an jeder Stufe, nicht nur an `ThemeData`:
-  // Stile, die direkt in ein Bauteil-Theme wandern (Titelzeile, Knöpfe),
-  // kommen an `ThemeData.fontFamilyFallback` sonst nie vorbei.
+  // Die Schrift hängt an jeder Stufe, nicht nur an `ThemeData`: Stile, die
+  // direkt in ein Bauteil-Theme wandern (Titelzeile, Knöpfe), kommen an
+  // `ThemeData.fontFamily` sonst nie vorbei.
   TextStyle style(
     double size,
     FontWeight weight,
@@ -405,7 +403,7 @@ TextTheme _textTheme(ColorScheme scheme) {
     letterSpacing: tracking,
     height: height,
     color: color ?? ink,
-    fontFamilyFallback: _fontStack,
+    fontFamily: fusenFontFamily,
   );
 
   return TextTheme(

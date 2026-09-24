@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'src/app/app.dart';
@@ -10,6 +12,7 @@ import 'src/features/capture/desktop_capture.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _registerFontLicenses();
   await initDesktopWindow();
 
   final database = FusenDatabase.open();
@@ -25,6 +28,22 @@ Future<void> main() async {
       child: const _Bootstrap(child: FusenApp()),
     ),
   );
+}
+
+/// Die mitgelieferten Schriften stehen unter der SIL Open Font License. Sie
+/// verlangt, dass die Lizenz mit der Schrift reist – so steht sie auch in
+/// der Lizenzübersicht unter Einstellungen.
+void _registerFontLicenses() {
+  LicenseRegistry.addLicense(() async* {
+    for (final (name, file) in const [
+      ('Plus Jakarta Sans', 'PlusJakartaSans-OFL.txt'),
+      ('JetBrains Mono', 'JetBrainsMono-OFL.txt'),
+    ]) {
+      yield LicenseEntryWithLineBreaks([
+        name,
+      ], await rootBundle.loadString('assets/fonts/$file'));
+    }
+  });
 }
 
 /// Kennung dieses Geräts – einmal vergeben, dann bleibt sie.
