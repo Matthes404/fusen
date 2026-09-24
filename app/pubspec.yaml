@@ -1,7 +1,7 @@
 name: fusen
 description: "Fusen – ein digitaler Stapel Haftnotizen, sortiert nach Projekt."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.13.0
@@ -21,6 +21,8 @@ dependencies:
 
   # Sync
   pocketbase: ^0.25.1
+  # Bilder herunterladen – PocketBase liefert nur die Adresse.
+  http: ^1.6.0
 
   # Darstellung
   flutter_markdown_plus: ^1.0.12
@@ -29,6 +31,12 @@ dependencies:
 
   # IDs
   uuid: ^4.6.0
+
+  # Bilder: auswählen, einfügen, hineinziehen, verkleinern
+  image_picker: ^1.2.3
+  pasteboard: ^0.5.0
+  desktop_drop: ^0.8.4
+  image: ^4.10.1
 
   # Desktop-Integration (globaler Hotkey, Fenstersteuerung)
   hotkey_manager: ^0.2.3
@@ -44,3 +52,35 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    # Die Lizenzen der Schriften – die OFL verlangt, dass sie mitreisen.
+    - assets/fonts/PlusJakartaSans-OFL.txt
+    - assets/fonts/JetBrainsMono-OFL.txt
+
+  # Mitgeliefert statt vom System geborgt: sonst sieht Fusen unter Linux
+  # nach DejaVu aus, unter Windows nach Segoe und auf dem Handy nach Roboto.
+  # Auf Latein und Satzzeichen beschnitten; andere Schriftsysteme holt sich
+  # Flutter weiter vom System.
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-Italic.ttf
+          style: italic
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700

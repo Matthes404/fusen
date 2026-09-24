@@ -36,11 +36,24 @@ enum NoteType {
     NoteType.log,
   ];
 
+  /// Zettel, die man abarbeitet – im Gegensatz zu Anweisung, Referenz und
+  /// Log, die etwas festhalten.
+  ///
+  /// Nur sie tragen eine Priorität und lassen sich abhaken. Eine Referenz
+  /// ist nicht „erledigt“, ein Log-Eintrag nicht „dringend“.
+  bool get isWorkItem => switch (this) {
+    NoteType.step ||
+    NoteType.requirement ||
+    NoteType.question ||
+    NoteType.idea => true,
+    NoteType.instruction || NoteType.reference || NoteType.log => false,
+  };
+
   /// Typen, die eine Priorität tragen dürfen.
-  bool get supportsPriority => this == NoteType.requirement;
+  bool get supportsPriority => isWorkItem;
 
   /// Typen, die abgehakt werden können.
-  bool get isCheckable => this == NoteType.step || this == NoteType.requirement;
+  bool get isCheckable => isWorkItem;
 
   /// Typen, deren Reihenfolge der Nutzer selbst bestimmt.
   bool get isManuallySortable => this == NoteType.step;

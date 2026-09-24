@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Die Unterlage aus lib/src/ui/palette.dart: der Startbildschirm soll
+         schon nach Fusen aussehen und nicht weiß aufblitzen. -->
+    <color name="launch_background">#FFF5F1E7</color>
+</resources>

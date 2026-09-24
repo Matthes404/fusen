@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +9,12 @@ import 'package:fusen/src/data/models/note_status.dart';
 import 'package:fusen/src/data/models/note_type.dart';
 import 'package:fusen/src/data/repositories/note_repository.dart';
 import 'package:fusen/src/data/repositories/project_repository.dart';
+import 'package:fusen/src/features/capture/capture_sheet.dart';
+import 'package:fusen/src/features/capture/list_import_dialog.dart';
+import 'package:fusen/src/features/overview/overview_view.dart';
 import 'package:fusen/src/ui/note_style.dart';
+import 'package:fusen/src/ui/theme.dart';
+import 'package:fusen/src/ui/widgets/completion_check.dart';
 
 /// Startet die echte App gegen eine Datenbank im Speicher und räumt danach
 /// wieder auf.
@@ -47,18 +53,34 @@ Future<void> runAppTest(
   }
 }
 
+/// Die Zettel eines Projekts in ihrer Reihenfolge.
+///
+/// Als einmalige Abfrage: ein `watch…().first` wartet im Testtakt auf einen
+/// Timer, den ohne `pump` niemand auslöst – der Test hinge.
+Future<List<NoteRow>> notesOf(FusenDatabase db, String projectId) =>
+    (db.select(db.notes)
+          ..where((n) => n.projectId.equals(projectId))
+          ..orderBy([(n) => OrderingTerm(expression: n.sortOrder)]))
+        .get();
+
 void main() {
-  testWidgets('startet mit leerer Inbox', (tester) async {
+  testWidgets('startet mit der Übersicht', (tester) async {
     await runAppTest(tester, (db) async {
       expect(find.text('Fusen'), findsOneWidget);
-      expect(find.text('Inbox'), findsWidgets);
-      expect(find.text('Die Inbox ist leer.'), findsOneWidget);
+      expect(find.text('Übersicht'), findsOneWidget);
       expect(find.text('Noch keine Projekte.'), findsOneWidget);
+      expect(find.text('Neues Projekt'), findsOneWidget);
+
+      await tester.tap(find.text('Inbox').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Die Inbox ist leer.'), findsOneWidget);
     });
   });
 
   testWidgets('legt über die Schnelleingabe einen Zettel ab', (tester) async {
     await runAppTest(tester, (db) async {
+      await tester.tap(find.text('Inbox').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Zettel ablegen'));
       await tester.pumpAndSettle();
 
@@ -114,7 +136,7 @@ void main() {
       await ProjectRepository(db).create(name: 'Chess Engine');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Chess Engine'));
+      await tester.tap(find.text('Chess Engine').first);
       await tester.pumpAndSettle();
 
       for (final type in NoteType.sectionOrder) {
@@ -143,7 +165,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Praktikum'));
+      await tester.tap(find.text('Praktikum').first);
       await tester.pumpAndSettle();
 
       expect(find.text('Neue Anweisung'), findsOneWidget);
@@ -182,14 +204,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Chess'));
+      await tester.tap(find.text('Chess').first);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(find.byType(CompletionCheck).first);
       await tester.pumpAndSettle();
 
       expect((await notes.findById(step.id))!.status, NoteStatus.done);
       expect(find.text('Erledigt (1)'), findsOneWidget);
+      // Die Meldung bietet an, es zurückzunehmen.
+      expect(find.text('Rückgängig'), findsOneWidget);
     });
   });
 
@@ -202,7 +226,7 @@ void main() {
 
       expect(find.text('Fusen'), findsOneWidget);
 
-      await tester.tap(find.text('Studium'));
+      await tester.tap(find.text('Studium').first);
       await tester.pumpAndSettle();
 
       expect(find.text('Aktuelle Anweisung'), findsWidgets);
@@ -217,5 +241,286 @@ void main() {
 
       expect(find.text('Kein Server'), findsOneWidget);
     });
+  });
+
+  testWidgets('legt direkt im Bereich an – eine Zeile oder eine ganze Liste', (
+    tester,
+  ) async {
+    await runAppTest(tester, (db) async {
+      final project = await ProjectRepository(db).create(name: 'Chess');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chess').first);
+      await tester.pumpAndSettle();
+
+      final field = find.widgetWithText(
+        TextField,
+        'Nächsten Schritt hinzufügen …',
+      );
+      await tester.enterText(field, 'Erst mal bauen !hoch');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Anlegen'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(field, 'testen\nmessen\nveröffentlichen');
+      await tester.pumpAndSettle();
+      expect(find.text('Enter legt 3 Schritte an'), findsOneWidget);
+      await tester.tap(find.byTooltip('3 anlegen'));
+      await tester.pumpAndSettle();
+
+      final steps = await notesOf(db, project.id);
+      expect(steps.map((n) => n.body), [
+        'Erst mal bauen',
+        'testen',
+        'messen',
+        'veröffentlichen',
+      ]);
+      expect(steps.every((n) => n.type == NoteType.step), isTrue);
+      expect(steps.first.priority, NotePriority.must);
+      expect(find.text('HOCH'), findsOneWidget);
+    });
+  });
+
+  testWidgets('die Schnelleingabe teilt eine Liste in einzelne Zettel', (
+    tester,
+  ) async {
+    await runAppTest(tester, (db) async {
+      await tester.tap(find.text('Zettel ablegen'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CaptureDialog),
+          matching: find.byType(TextField),
+        ),
+        '@umzug !schritt\n- Kartons besorgen\n- [x] Termin festlegen',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2 Einträge erkannt'), findsOneWidget);
+
+      await tester.tap(find.text('2 Zettel ablegen'));
+      await tester.pumpAndSettle();
+
+      final notes = await db.select(db.notes).get();
+      expect(notes.map((n) => n.body).toSet(), {
+        'Kartons besorgen',
+        'Termin festlegen',
+      });
+      expect(notes.every((n) => n.type == NoteType.step), isTrue);
+      final done = notes.singleWhere((n) => n.body == 'Termin festlegen');
+      expect(done.status, NoteStatus.done);
+      expect(done.closedAt, isNotNull);
+      final project = (await db.select(db.projects).get()).single;
+      expect(project.name, 'umzug');
+      expect(notes.every((n) => n.projectId == project.id), isTrue);
+    });
+  });
+
+  testWidgets('Löschen lässt sich zurücknehmen', (tester) async {
+    await runAppTest(tester, (db) async {
+      await NoteRepository(db, deviceId: 't').create(body: 'Weg damit');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inbox').first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Aktionen').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Löschen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Weg damit'), findsNothing);
+
+      await tester.tap(find.text('Rückgängig'));
+      await tester.pumpAndSettle();
+      expect(find.text('Weg damit'), findsOneWidget);
+    });
+  });
+
+  testWidgets('die Rückgängig-Meldung verschwindet von selbst', (tester) async {
+    await runAppTest(tester, (db) async {
+      await NoteRepository(db, deviceId: 't').create(body: 'Weg damit');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inbox').first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Aktionen').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Löschen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rückgängig'), findsOneWidget);
+
+      // Flutter lässt Meldungen mit Aktion sonst stehen, bis man sie
+      // wegwischt – und „Rückgängig“ bliebe beliebig lange scharf.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+      expect(find.text('Rückgängig'), findsNothing);
+    });
+  });
+
+  testWidgets('sortiert aus der Inbox in ein Projekt', (tester) async {
+    await runAppTest(tester, (db) async {
+      final project = await ProjectRepository(db).create(name: 'Chess');
+      final notes = NoteRepository(db, deviceId: 't');
+      final note = await notes.create(body: 'Gehört zu Chess');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inbox').first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Einsortieren'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chess').last);
+      await tester.pumpAndSettle();
+
+      expect((await notes.findById(note.id))!.projectId, project.id);
+      expect(find.text('Die Inbox ist leer.'), findsOneWidget);
+    });
+  });
+
+  testWidgets('die Übersicht zeigt Wichtiges und öffnet Projekte', (
+    tester,
+  ) async {
+    await runAppTest(tester, (db) async {
+      final project = await ProjectRepository(db).create(name: 'Chess');
+      await NoteRepository(db, deviceId: 't').create(
+        projectId: project.id,
+        type: NoteType.step,
+        body: 'Wichtiger Schritt',
+        priority: NotePriority.must,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Wichtig'), findsOneWidget);
+      expect(find.text('Wichtiger Schritt'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ProjectTile, 'Chess'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nächste Schritte'), findsOneWidget);
+    });
+  });
+
+  testWidgets('legt aus einer eingefügten Liste Zettel an', (tester) async {
+    await runAppTest(tester, (db) async {
+      final project = await ProjectRepository(db).create(name: 'Chess');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chess').first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Aus einer Liste anlegen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(ListImportDialog),
+          matching: find.byType(TextField),
+        ),
+        'Ideen:\n- Eröffnungsbuch\n\nFragen:\n- Reicht int8?\n- Wie schnell?',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('3 von 3 ausgewählt'), findsOneWidget);
+
+      // Abwählen und danach nur den Cursor setzen: die Auswahl bleibt.
+      await tester.tap(find.text('Wie schnell?'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 von 3 ausgewählt'), findsOneWidget);
+      final field = find.descendant(
+        of: find.byType(ListImportDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      expect(find.text('2 von 3 ausgewählt'), findsOneWidget);
+      await tester.tap(find.text('Wie schnell?'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('3 Zettel anlegen'));
+      await tester.pumpAndSettle();
+
+      final board = await notesOf(db, project.id);
+      expect(
+        {for (final n in board) n.body: n.type},
+        {
+          'Eröffnungsbuch': NoteType.idea,
+          'Reicht int8?': NoteType.question,
+          'Wie schnell?': NoteType.question,
+        },
+      );
+      expect(find.text('3 Zettel angelegt'), findsOneWidget);
+    });
+  });
+
+  testWidgets('die Schnelleingabe passt auf ein schmales Handy', (
+    tester,
+  ) async {
+    await runAppTest(tester, size: const Size(360, 740), (db) async {
+      await tester.tap(find.text('Zettel ablegen'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(CaptureDialog),
+          matching: find.byType(TextField),
+        ),
+        '- Kartons besorgen\n- Termin festlegen',
+      );
+      await tester.pumpAndSettle();
+
+      // Ein Überlauf wäre eine Ausnahme im Layout – und im Release ein
+      // abgeschnittener Speichern-Knopf.
+      expect(tester.takeException(), isNull);
+      expect(find.text('Ablegen (2)'), findsOneWidget);
+      expect(find.byTooltip('Abbrechen'), findsOneWidget);
+    });
+  });
+
+  testWidgets('der Listen-Import passt mit offener Tastatur aufs Handy', (
+    tester,
+  ) async {
+    final database = FusenDatabase.memory();
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    // Die Bildschirmtastatur nimmt gut 40 % der Höhe.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          deviceIdProvider.overrideWithValue('test-device'),
+        ],
+        child: MaterialApp(
+          theme: fusenTheme(Brightness.light),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => showListImportDialog(context),
+                  child: const Text('öffnen'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      await tester.tap(find.text('öffnen'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      // Kopf und Optionen scrollen mit; der Knopf unten bleibt erreichbar.
+      expect(find.text('Anlegen'), findsOneWidget);
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(ListImportDialog),
+          matching: find.byType(TextField),
+        ),
+        '- eins\n- zwei',
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('2 Zettel anlegen'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await database.close();
+    }
   });
 }

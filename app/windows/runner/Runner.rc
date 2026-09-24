@@ -89,11 +89,15 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
+            // CompanyName und ProductName ergeben den Datenordner
+            // (%APPDATA%\dev.fusen\fusen, siehe path_provider_windows).
+            // Wer sie ändert, lässt die Zettel bestehender Installationen
+            // zurück.
             VALUE "CompanyName", "dev.fusen" "\0"
-            VALUE "FileDescription", "fusen" "\0"
+            VALUE "FileDescription", "Fusen" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "fusen" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 dev.fusen. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 the Fusen contributors" "\0"
             VALUE "OriginalFilename", "fusen.exe" "\0"
             VALUE "ProductName", "fusen" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

@@ -68,6 +68,12 @@
 		<string>https</string>
 		<string>mailto</string>
 	</array>
+	<!-- Bilder an Zetteln: iOS beendet die App, sobald sie Kamera oder
+	     Fotomediathek anfragt, ohne dass hier steht, wozu. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Fusen hängt Fotos, die du aufnimmst, an deine Zettel.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Fusen hängt Bilder aus deiner Mediathek an deine Zettel.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

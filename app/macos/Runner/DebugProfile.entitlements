@@ -10,5 +10,9 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Bilder über den Öffnen-Dialog anhängen: im Sandkasten darf die App
+	     nur lesen, was man dort ausdrücklich auswählt. -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
 </dict>
 </plist>

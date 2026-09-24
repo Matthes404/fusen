@@ -6,6 +6,7 @@ import '../../core/sort_order.dart';
 import '../db/database.dart';
 import '../models/note_status.dart';
 import '../models/note_type.dart';
+import 'attachment_repository.dart';
 
 /// Wird geworfen, wenn ein Log-Eintrag nach Ablauf der 24-Stunden-Frist
 /// geändert werden soll.
@@ -26,6 +27,25 @@ class NoteEditLockedException implements Exception {
 bool isContentEditable(NoteRow note, DateTime now) {
   if (!note.type.isImmutableAfterGracePeriod) return true;
   return now.difference(note.createdAt.toUtc()) < logEditWindow;
+}
+
+/// Was ein Verschieben verändert hat – genug, um es zurückzunehmen.
+///
+/// Mehr als „zurück ins alte Projekt“: der Zettel soll wieder an seiner
+/// alten Stelle stehen, und eine Anweisung, die ihm im Zielprojekt weichen
+/// musste, soll wieder gelten.
+class NoteMove {
+  const NoteMove({
+    required this.noteId,
+    required this.fromProjectId,
+    required this.fromSortOrder,
+    this.retiredInstructionIds = const [],
+  });
+
+  final String noteId;
+  final String? fromProjectId;
+  final double fromSortOrder;
+  final List<String> retiredInstructionIds;
 }
 
 /// Alle Schreib- und Lesezugriffe auf Zettel, inklusive der Regeln aus dem
@@ -131,8 +151,162 @@ class NoteRepository {
     });
   }
 
+  // --- Übersicht über alle Projekte ---------------------------------------
+
+  /// Offene Arbeitszettel mit Priorität aus allen Projekten, wichtigste
+  /// zuerst, bei gleicher Priorität der zuletzt bearbeitete – „was steht
+  /// an?“ auf einen Blick.
+  Stream<List<NoteRow>> watchPrioritized({int limit = 12}) {
+    return (_db.select(_db.notes)
+          ..where(
+            (t) =>
+                t.deletedAt.isNull() &
+                t.archivedAt.isNull() &
+                t.status.equalsValue(NoteStatus.open) &
+                t.priority.isNotNull() &
+                t.type.isInValues(_workTypes) &
+                _outsideArchivedProjects(t),
+          )
+          ..orderBy([
+            (t) => OrderingTerm(expression: _priorityRank(t)),
+            (t) =>
+                OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .watch();
+  }
+
+  /// Zuletzt abgeschlossene Arbeitszettel, neueste zuerst.
+  ///
+  /// Archivierte Zettel zählen mit: eine beantwortete Frage wandert sofort
+  /// ins Archiv, erledigt ist sie trotzdem. Zettel archivierter Projekte
+  /// dagegen nicht – das Projekt ist aus dem Blick, dann auch sie.
+  Stream<List<NoteRow>> watchRecentlyClosed({int limit = 8}) {
+    return (_db.select(_db.notes)
+          ..where(
+            (t) =>
+                t.deletedAt.isNull() &
+                t.closedAt.isNotNull() &
+                t.status.equalsValue(NoteStatus.done) &
+                t.type.isInValues(_workTypes) &
+                _outsideArchivedProjects(t),
+          )
+          ..orderBy([
+            (t) =>
+                OrderingTerm(expression: t.closedAt, mode: OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .watch();
+  }
+
+  /// Offene und abgeschlossene Arbeitszettel pro Projekt (`null` = Inbox) –
+  /// für die Fortschrittsbalken.
+  ///
+  /// Gezählt wird, was auf dem Board liegt; Archiviertes ist aufgeräumt und
+  /// verschwindet auch aus der Rechnung.
+  Stream<Map<String?, NoteProgress>> watchProgress() {
+    final count = _db.notes.id.count();
+    final query = _db.selectOnly(_db.notes)
+      ..addColumns([_db.notes.projectId, _db.notes.status, count])
+      ..where(
+        _db.notes.deletedAt.isNull() &
+            _db.notes.archivedAt.isNull() &
+            _db.notes.type.isInValues(_workTypes),
+      )
+      ..groupBy([_db.notes.projectId, _db.notes.status]);
+    return query.watch().map((rows) {
+      final open = <String?, int>{};
+      final closed = <String?, int>{};
+      for (final row in rows) {
+        final projectId = row.read(_db.notes.projectId);
+        final status = row.readWithConverter(_db.notes.status)!;
+        final target = status.isOpen ? open : closed;
+        target[projectId] = (target[projectId] ?? 0) + (row.read(count) ?? 0);
+      }
+      return {
+        for (final projectId in {...open.keys, ...closed.keys})
+          projectId: NoteProgress(
+            open: open[projectId] ?? 0,
+            closed: closed[projectId] ?? 0,
+          ),
+      };
+    });
+  }
+
+  /// Die gerade geltende Anweisung jedes Projekts (`null` = Inbox).
+  Stream<Map<String?, NoteRow>> watchCurrentInstructions() {
+    return (_db.select(_db.notes)..where(
+          (t) =>
+              t.deletedAt.isNull() &
+              t.archivedAt.isNull() &
+              t.type.equalsValue(NoteType.instruction) &
+              t.status.equalsValue(NoteStatus.open),
+        ))
+        .watch()
+        .map((notes) => {for (final note in notes) note.projectId: note});
+  }
+
+  /// Der nächste offene Schritt jedes Projekts – wichtigster zuerst, bei
+  /// gleicher Priorität der, der in der Liste oben steht.
+  Stream<Map<String?, NoteRow>> watchNextSteps() {
+    return (_db.select(_db.notes)
+          ..where(
+            (t) =>
+                t.deletedAt.isNull() &
+                t.archivedAt.isNull() &
+                t.type.equalsValue(NoteType.step) &
+                t.status.equalsValue(NoteStatus.open),
+          )
+          ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+        .watch()
+        .map((steps) {
+          final next = <String?, NoteRow>{};
+          for (final step in steps) {
+            final current = next[step.projectId];
+            if (current == null ||
+                NotePriority.rankOf(step.priority) <
+                    NotePriority.rankOf(current.priority)) {
+              next[step.projectId] = step;
+            }
+          }
+          return next;
+        });
+  }
+
+  static final List<NoteType> _workTypes = NoteType.values
+      .where((type) => type.isWorkItem)
+      .toList(growable: false);
+
+  /// Der Rang der Priorität als Zahl, wie [NotePriority.rankOf]. In SQL, weil
+  /// die Priorität als Name in der Tabelle steht und alphabetisch „could“
+  /// vor „must“ käme – und damit `LIMIT` die wichtigsten trifft.
+  Expression<int> _priorityRank($NotesTable t) => CaseWhenExpression<int>(
+    cases: [
+      for (final priority in NotePriority.displayOrder)
+        CaseWhen(
+          t.priority.equalsValue(priority),
+          then: Constant(NotePriority.rankOf(priority)),
+        ),
+    ],
+    orElse: Constant(NotePriority.rankOf(null)),
+  );
+
+  /// Nicht in einem archivierten Projekt. Inbox-Zettel und solche, deren
+  /// Projekt noch nicht angekommen ist, zählen mit – die zeigt die App in
+  /// der Inbox.
+  Expression<bool> _outsideArchivedProjects($NotesTable t) {
+    final archived = _db.selectOnly(_db.projects)
+      ..addColumns([_db.projects.id])
+      ..where(_db.projects.archivedAt.isNotNull());
+    return t.projectId.isNull() | t.projectId.isNotInQuery(archived);
+  }
+
   // --- Schreiben ---------------------------------------------------------
 
+  /// Legt einen Zettel an.
+  ///
+  /// [status] erlaubt, gleich einen abgeschlossenen Zettel anzulegen – beim
+  /// Import einer Liste, in der schon Punkte abgehakt sind (`- [x] …`).
   Future<NoteRow> create({
     String? projectId,
     NoteType type = NoteType.idea,
@@ -140,6 +314,7 @@ class NoteRepository {
     String? title,
     List<String> tags = const [],
     NotePriority? priority,
+    NoteStatus status = NoteStatus.open,
     DateTime? createdAt,
   }) async {
     final now = _clock.now();
@@ -147,9 +322,9 @@ class NoteRepository {
       id: newId(),
       projectId: projectId,
       type: type,
-      title: title,
+      title: title == null || title.isEmpty ? null : title,
       body: body,
-      status: NoteStatus.open,
+      status: status,
       priority: type.supportsPriority ? priority : null,
       tags: _normalizeTags(tags),
       sortOrder: await _nextSortOrder(projectId),
@@ -160,13 +335,14 @@ class NoteRepository {
       ),
       createdAt: createdAt?.toUtc() ?? now,
       updatedAt: now,
+      closedAt: status.isOpen ? null : now,
       deviceId: deviceId,
       pendingSync: true,
     );
 
     await _db.transaction(() async {
       await _db.into(_db.notes).insert(row);
-      if (type == NoteType.instruction) {
+      if (type == NoteType.instruction && status.isOpen) {
         await _retireOtherInstructions(projectId, keep: row.id, now: now);
       }
     });
@@ -231,13 +407,15 @@ class NoteRepository {
     });
   }
 
-  /// Verschiebt einen Zettel in ein anderes Projekt (`null` = Inbox).
-  Future<void> moveToProject(String id, String? projectId) async {
+  /// Verschiebt einen Zettel ans Ende eines anderen Projekts (`null` =
+  /// Inbox). Liefert, was [undoMove] braucht, oder `null`, wenn sich nichts
+  /// geändert hat.
+  Future<NoteMove?> moveToProject(String id, String? projectId) async {
     final note = await findById(id);
-    if (note == null || note.projectId == projectId) return;
+    if (note == null || note.projectId == projectId) return null;
 
     final now = _clock.now();
-    await _db.transaction(() async {
+    return _db.transaction(() async {
       await _write(
         note.id,
         NotesCompanion(
@@ -246,19 +424,75 @@ class NoteRepository {
         ),
         now: now,
       );
+      final retired = note.type == NoteType.instruction && note.status.isOpen
+          ? await _retireOtherInstructions(projectId, keep: note.id, now: now)
+          : const <String>[];
+      return NoteMove(
+        noteId: note.id,
+        fromProjectId: note.projectId,
+        fromSortOrder: note.sortOrder,
+        retiredInstructionIds: retired,
+      );
+    });
+  }
+
+  /// Nimmt [move] zurück: der Zettel steht wieder an seiner alten Stelle,
+  /// und was ihm weichen musste, gilt wieder.
+  Future<void> undoMove(NoteMove move) async {
+    final note = await findById(move.noteId);
+    if (note == null) return;
+
+    final now = _clock.now();
+    await _db.transaction(() async {
+      await _write(
+        note.id,
+        NotesCompanion(
+          projectId: Value(move.fromProjectId),
+          sortOrder: Value(move.fromSortOrder),
+        ),
+        now: now,
+      );
+      // Auch zurück gilt: eine aktive Anweisung pro Projekt. Hat jemand
+      // inzwischen im alten Projekt eine neue angelegt, geht die in den
+      // Verlauf.
       if (note.type == NoteType.instruction && note.status.isOpen) {
-        await _retireOtherInstructions(projectId, keep: note.id, now: now);
+        await _retireOtherInstructions(
+          move.fromProjectId,
+          keep: note.id,
+          now: now,
+        );
+      }
+      for (final id in move.retiredInstructionIds) {
+        await _write(
+          id,
+          const NotesCompanion(
+            status: Value(NoteStatus.open),
+            closedAt: Value(null),
+          ),
+          now: now,
+        );
       }
     });
   }
 
+  /// Setzt den Status und hält den Abschlusszeitpunkt mit.
+  ///
+  /// Wechselt ein Zettel nur zwischen „erledigt“ und „verworfen“, bleibt der
+  /// Zeitpunkt stehen: abgeschlossen war er da schon.
   Future<void> setStatus(String id, NoteStatus status) async {
     final note = await findById(id);
     if (note == null || note.status == status) return;
 
     final now = _clock.now();
     await _db.transaction(() async {
-      await _write(note.id, NotesCompanion(status: Value(status)), now: now);
+      await _write(
+        note.id,
+        NotesCompanion(
+          status: Value(status),
+          closedAt: Value(status.isOpen ? null : (note.closedAt ?? now)),
+        ),
+        now: now,
+      );
       if (note.type == NoteType.instruction && status.isOpen) {
         await _retireOtherInstructions(note.projectId, keep: note.id, now: now);
       }
@@ -282,6 +516,7 @@ class NoteRepository {
       NotesCompanion(
         answer: Value(answer),
         status: const Value(NoteStatus.done),
+        closedAt: Value(note.closedAt ?? now),
         archivedAt: Value(now),
         searchText: Value(
           buildSearchText(
@@ -303,8 +538,39 @@ class NoteRepository {
       _write(id, const NotesCompanion(archivedAt: Value(null)));
 
   /// Tombstone statt hartem Löschen – siehe [ProjectRepository.delete].
-  Future<void> delete(String id) =>
-      _write(id, NotesCompanion(deletedAt: Value(_clock.now())));
+  ///
+  /// Die Bilder des Zettels gehen mit, und zwar mit genau demselben
+  /// Zeitstempel: daran erkennt [restore], welche Bilder zu dieser Löschung
+  /// gehören und welche schon vorher einzeln entfernt wurden.
+  Future<void> delete(String id) async {
+    final now = _clock.now();
+    await _db.transaction(() async {
+      await _write(id, NotesCompanion(deletedAt: Value(now)), now: now);
+      await tombstoneAttachmentsOf(_db, [id], now: now, deviceId: deviceId);
+    });
+  }
+
+  /// Holt einen gelöschten Zettel zurück – für „Rückgängig“ nach dem Löschen.
+  Future<void> restore(String id) async {
+    final note = await findById(id);
+    final deletedAt = note?.deletedAt;
+    if (note == null || deletedAt == null) return;
+
+    final now = _clock.now();
+    await _db.transaction(() async {
+      await _write(id, const NotesCompanion(deletedAt: Value(null)), now: now);
+      await (_db.update(_db.attachments)
+            ..where((t) => t.noteId.equals(id) & t.deletedAt.equals(deletedAt)))
+          .write(
+            AttachmentsCompanion(
+              deletedAt: const Value(null),
+              updatedAt: Value(now),
+              deviceId: Value(deviceId),
+              pendingSync: const Value(true),
+            ),
+          );
+    });
+  }
 
   /// Neue Reihenfolge für die Nächsten Schritte eines Projekts.
   Future<void> reorder(List<String> idsInOrder) async {
@@ -326,14 +592,16 @@ class NoteRepository {
   /// Volltextsuche über alle Zettel.
   ///
   /// Die Eingabe versteht dieselben Kurzbefehle wie die Schnelleingabe:
-  /// `@projekt` und `!typ` müssen vorher aufgelöst und als [projectId] bzw.
-  /// [type] übergeben werden, `#tag` und freie Wörter landen in [terms].
+  /// `@projekt`, `!typ` und `!hoch` müssen vorher aufgelöst und als
+  /// [projectId], [type] bzw. [priority] übergeben werden, `#tag` und freie
+  /// Wörter landen in [terms].
   /// Alle Begriffe müssen zutreffen (UND).
   Stream<List<NoteRow>> search({
     List<String> terms = const [],
     String? projectId,
     bool projectFilterActive = false,
     NoteType? type,
+    NotePriority? priority,
     bool includeArchived = true,
   }) {
     final needles = terms
@@ -351,6 +619,9 @@ class NoteRepository {
     if (type != null) {
       query.where((t) => t.type.equalsValue(type));
     }
+    if (priority != null) {
+      query.where((t) => t.priority.equalsValue(priority));
+    }
     for (final needle in needles) {
       query.where((t) => t.searchText.contains(needle));
     }
@@ -363,33 +634,38 @@ class NoteRepository {
   // --- Interna -----------------------------------------------------------
 
   /// Nur *eine* aktive Anweisung pro Projekt: alle anderen offenen
-  /// Anweisungen wandern in den Verlauf (`done`).
-  Future<void> _retireOtherInstructions(
+  /// Anweisungen wandern in den Verlauf (`done`). Liefert ihre IDs, damit
+  /// sich das zurücknehmen lässt.
+  Future<List<String>> _retireOtherInstructions(
     String? projectId, {
     required String keep,
     required DateTime now,
   }) async {
-    final update = _db.update(_db.notes)
+    final query = _db.selectOnly(_db.notes)
+      ..addColumns([_db.notes.id])
       ..where(
-        (t) =>
-            t.type.equalsValue(NoteType.instruction) &
-            t.status.equalsValue(NoteStatus.open) &
-            t.id.equals(keep).not() &
-            t.deletedAt.isNull(),
+        _db.notes.type.equalsValue(NoteType.instruction) &
+            _db.notes.status.equalsValue(NoteStatus.open) &
+            _db.notes.id.equals(keep).not() &
+            _db.notes.deletedAt.isNull() &
+            (projectId == null
+                ? _db.notes.projectId.isNull()
+                : _db.notes.projectId.equals(projectId)),
       );
-    if (projectId == null) {
-      update.where((t) => t.projectId.isNull());
-    } else {
-      update.where((t) => t.projectId.equals(projectId));
-    }
-    await update.write(
+    final ids = await query.map((row) => row.read(_db.notes.id)!).get();
+    if (ids.isEmpty) return const [];
+
+    await (_db.update(_db.notes)..where((t) => t.id.isIn(ids))).write(
       NotesCompanion(
         status: const Value(NoteStatus.done),
+        // Ab jetzt steht sie im Verlauf – „galt bis“.
+        closedAt: Value(now),
         updatedAt: Value(now),
         deviceId: Value(deviceId),
         pendingSync: const Value(true),
       ),
     );
+    return ids;
   }
 
   Future<NoteRow> _requireEditable(String id) async {
@@ -465,4 +741,29 @@ String buildSearchText({
     for (final tag in tags) '#$tag',
   ];
   return parts.join('\n').toLowerCase();
+}
+
+/// Wie weit ein Projekt ist: offene und abgeschlossene Arbeitszettel.
+class NoteProgress {
+  const NoteProgress({required this.open, required this.closed});
+
+  static const NoteProgress empty = NoteProgress(open: 0, closed: 0);
+
+  final int open;
+  final int closed;
+
+  int get total => open + closed;
+
+  /// Anteil abgeschlossen, von 0 bis 1. Ein leeres Projekt steht bei 0.
+  double get ratio => total == 0 ? 0 : closed / total;
+
+  @override
+  bool operator ==(Object other) =>
+      other is NoteProgress && other.open == open && other.closed == closed;
+
+  @override
+  int get hashCode => Object.hash(open, closed);
+
+  @override
+  String toString() => 'NoteProgress(open: $open, closed: $closed)';
 }

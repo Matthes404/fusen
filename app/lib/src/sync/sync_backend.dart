@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'sync_records.dart';
 
 /// Zugangsdaten einer Sync-Instanz.
@@ -27,11 +29,18 @@ class RemoteBatch {
   const RemoteBatch({
     this.projects = const [],
     this.notes = const [],
+    this.attachments = const [],
+    this.attachmentsSupported = true,
     this.cursor,
   });
 
   final List<SyncProject> projects;
   final List<SyncNote> notes;
+  final List<SyncAttachment> attachments;
+
+  /// `false`, wenn der Server noch kein Sync-Format 2 kennt – dann gibt es
+  /// dort keine Bilder, der Rest gleicht trotzdem ab.
+  final bool attachmentsSupported;
 
   /// Serverseitiger Zeitstempel des jüngsten gelesenen Datensatzes.
   ///
@@ -39,14 +48,25 @@ class RemoteBatch {
   /// falsch gestellte Uhr auf einem Handy Änderungen überspringen.
   final DateTime? cursor;
 
-  bool get isEmpty => projects.isEmpty && notes.isEmpty;
+  bool get isEmpty => projects.isEmpty && notes.isEmpty && attachments.isEmpty;
 }
 
 class SyncBackendException implements Exception {
-  const SyncBackendException(this.message, {this.isAuthFailure = false});
+  const SyncBackendException(
+    this.message, {
+    this.isAuthFailure = false,
+    this.isNotFound = false,
+    this.isUnsupported = false,
+  });
 
   final String message;
   final bool isAuthFailure;
+
+  /// Der Datensatz fehlt auf dem Server – etwa, weil der neu aufgesetzt wurde.
+  final bool isNotFound;
+
+  /// Der Server kennt die Sammlung nicht: ein Server von vor Version 2.
+  final bool isUnsupported;
 
   @override
   String toString() => message;
@@ -75,4 +95,19 @@ abstract class SyncBackend {
     List<SyncProject> projects = const [],
     List<SyncNote> notes = const [],
   });
+
+  /// Schiebt ein Bild hoch.
+  ///
+  /// Mit [bytes] wird die Datei mitgeschickt – beim ersten Mal. Danach
+  /// ändert sich an einem Bild nur noch die Beschreibung (etwa der
+  /// Tombstone), dann bleibt [bytes] leer. Liefert den Dateinamen, unter dem
+  /// der Server die Datei abgelegt hat.
+  ///
+  /// Wirft [SyncBackendException] mit `isUnsupported`, wenn der Server keine
+  /// Bilder kennt, und mit `isNotFound`, wenn ohne [bytes] aktualisiert
+  /// werden soll, der Datensatz aber fehlt.
+  Future<String?> pushAttachment(SyncAttachment attachment, {Uint8List? bytes});
+
+  /// Holt die Bilddaten eines Bildes, das der Server kennt.
+  Future<Uint8List> downloadAttachment(SyncAttachment attachment);
 }

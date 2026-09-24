@@ -1,96 +1,78 @@
 name: Builds
 
-# Nach jedem Merge auf main gibt es ein installierbares Build zum
-# Ausprobieren – ohne dass jemand lokal bauen muss.
+# Installierbare Pakete zum Ausprobieren, ohne selbst zu bauen – als
+# Artefakte am Lauf, 14 Tage lang:
+# * nach jedem Push auf main,
+# * auf jedem anderen Branch, sobald sich etwas Natives ändert: ein neues
+#   Plugin, Plattform-Einstellungen, die Paketierung. Analyse und Tests
+#   fassen nichts davon an; es fällt erst beim Bauen auf – und soll das vor
+#   dem Merge tun,
+# * von Hand über „Run workflow“.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
-concurrency:
-  group: builds-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  FLUTTER_VERSION: 3.47.3
+permissions:
+  contents: read
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Android (APK)
-            os: ubuntu-latest
-            target: apk
-            artifact: fusen-android
-            path: app/build/app/outputs/flutter-apk/app-debug.apk
-          - name: Linux
-            os: ubuntu-latest
-            target: linux
-            artifact: fusen-linux
-            path: app/build/linux/x64/debug/bundle
-          - name: Windows
-            os: windows-latest
-            target: windows
-            artifact: fusen-windows
-            path: app/build/windows/x64/runner/Debug
-          - name: macOS
-            os: macos-latest
-            target: macos
-            artifact: fusen-macos
-            path: app/build/macos/Build/Products/Debug
-          - name: iOS (unsigniert)
-            os: macos-latest
-            target: ios
-            artifact: fusen-ios
-            path: app/build/ios/iphoneos
-
+  plan:
+    name: Planen
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        if: matrix.target == 'apk'
         with:
-          distribution: temurin
-          java-version: '17'
+          fetch-depth: 0
 
-      - name: Linux-Abhängigkeiten
-        if: matrix.target == 'linux'
-        # libkeybinder-3.0-dev braucht hotkey_manager für den globalen
-        # Hotkey; ohne das Paket bricht CMake ab, bevor überhaupt etwas
-        # übersetzt wird.
+      - id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libkeybinder-3.0-dev
+          name="$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)"
+          echo "version=$name-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Pakete holen
-        working-directory: app
-        run: flutter pub get
-
-      - name: Bauen
-        working-directory: app
-        # iOS ohne Signierung: zum Ausprobieren im Simulator reicht das,
-        # signiert wird erst für den App Store.
-        run: |
-          if [ "${{ matrix.target }}" = "ios" ]; then
-            flutter build ios --debug --no-codesign
-          else
-            flutter build ${{ matrix.target }} --debug
+          if [ "$GITHUB_EVENT_NAME" != push ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-        shell: bash
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.path }}
-          if-no-files-found: error
-          retention-days: 14
+          # Womit vergleichen: mit dem Stand vor dem Push, bei einem neuen
+          # Branch mit seinem Abzweig vom Standard-Branch.
+          base=""
+          if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            base="$(git merge-base "origin/$DEFAULT_BRANCH" "$GITHUB_SHA" 2>/dev/null || true)"
+          fi
+
+          if [ -z "$base" ]; then
+            build=true
+          elif git diff --name-only "$base" "$GITHUB_SHA" |
+            grep -qE '^(\.github/workflows/(build|package)\.yml|app/pubspec\.(yaml|lock)|app/(android|ios|linux|macos|windows)/)'; then
+            build=true
+          else
+            build=false
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Native Änderungen seit ${base:-?}: $build"
+
+  packages:
+    name: Pakete
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    # Hier und nicht für den ganzen Workflow: ein Push, der nichts Natives
+    # ändert, soll einen laufenden Build nicht abbrechen und dann selbst
+    # nichts bauen.
+    concurrency:
+      group: builds-${{ github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/package.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      retention-days: 14
+    secrets: inherit

@@ -3,8 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../ui/palette.dart';
+import '../../ui/tokens.dart';
 import '../capture/capture_sheet.dart';
 import '../inbox/inbox_view.dart';
+import '../overview/overview_view.dart';
+import '../project/archived_projects_page.dart';
 import '../project/project_view.dart';
 import '../search/search_view.dart';
 import '../settings/settings_view.dart';
@@ -13,6 +17,9 @@ import 'project_sidebar.dart';
 
 /// Ab dieser Breite passen Liste und Inhalt nebeneinander.
 const double twoPaneBreakpoint = 900;
+
+/// Breite der Seitenspalte.
+const double sidebarWidth = 268;
 
 /// Das Grundgerüst der App.
 ///
@@ -26,7 +33,7 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class HomeShellState extends ConsumerState<HomeShell> {
-  Destination _selected = const ProjectDestination(null);
+  Destination _selected = const OverviewDestination();
 
   @override
   Widget build(BuildContext context) {
@@ -54,40 +61,67 @@ class HomeShellState extends ConsumerState<HomeShell> {
       body: Row(
         children: [
           SizedBox(
-            width: 264,
-            child: ProjectSidebar(
-              selected: _selected,
-              onSelect: _select,
-              onCapture: openCapture,
+            width: sidebarWidth,
+            child: SafeArea(
+              right: false,
+              child: ProjectSidebar(
+                selected: _selected,
+                onSelect: _select,
+                onCapture: openCapture,
+                onOpenArchived: _openArchived,
+              ),
             ),
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: _detailFor(_selected)),
+          VerticalDivider(width: 1, color: context.paper.hairline),
+          // Der Wechsel zwischen zwei Projekten blendet über, damit klar
+          // ist, dass sich der ganze Bereich austauscht und nicht nur ein
+          // paar Zeilen anders stehen.
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: Motion.base,
+              switchInCurve: Motion.standard,
+              child: KeyedSubtree(
+                key: ValueKey(_selected),
+                child: _detailFor(_selected),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
+  /// Auf dem Handy ist die Übersicht die Startseite: Projekte als Kacheln,
+  /// Suche und Einstellungen im Kopf, der Ablegen-Knopf unten rechts.
   Widget _buildNarrow(BuildContext context) {
+    final syncEnabled = ref.watch(syncEnabledProvider).value ?? false;
     return Scaffold(
-      body: SafeArea(
-        child: ProjectSidebar(
-          selected: _selected,
-          onSelect: _open,
-          onCapture: openCapture,
-          showSelection: false,
-        ),
+      body: OverviewView(
+        onOpenProject: (id) => _open(ProjectDestination(id)),
+        onOpenInbox: () => _open(const ProjectDestination(null)),
+        onOpenSearch: () => _open(const SearchDestination()),
+        onOpenSettings: () => _open(const SettingsDestination()),
+        onOpenArchived: _openArchived,
+        headerActions: [
+          if (syncEnabled)
+            SyncIndicator(outcome: ref.watch(syncControllerProvider)),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Zettel ablegen',
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: openCapture,
-        child: const Icon(Icons.edit_outlined),
+        icon: const Icon(Icons.add),
+        label: const Text('Zettel ablegen'),
       ),
     );
   }
 
   Widget _detailFor(Destination destination) {
     return switch (destination) {
+      OverviewDestination() => OverviewView(
+        onOpenProject: (id) => _select(ProjectDestination(id)),
+        onOpenInbox: () => _select(const ProjectDestination(null)),
+        onOpenArchived: _openArchived,
+      ),
       ProjectDestination(:final projectId) =>
         projectId == null
             ? const InboxView()
@@ -95,6 +129,19 @@ class HomeShellState extends ConsumerState<HomeShell> {
       SearchDestination() => const SearchView(),
       SettingsDestination() => const SettingsView(),
     };
+  }
+
+  void _openArchived() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ArchivedProjectsPage(
+          onOpenProject: (id) {
+            Navigator.of(context).pop();
+            _open(ProjectDestination(id));
+          },
+        ),
+      ),
+    );
   }
 
   void _select(Destination destination) {

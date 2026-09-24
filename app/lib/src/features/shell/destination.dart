@@ -3,6 +3,17 @@ sealed class Destination {
   const Destination();
 }
 
+/// Die Startseite: was ansteht, alle Projekte, zuletzt Erledigtes.
+class OverviewDestination extends Destination {
+  const OverviewDestination();
+
+  @override
+  bool operator ==(Object other) => other is OverviewDestination;
+
+  @override
+  int get hashCode => 'overview'.hashCode;
+}
+
 /// Ein Projekt – oder die Inbox, wenn [projectId] `null` ist.
 class ProjectDestination extends Destination {
   const ProjectDestination(this.projectId);

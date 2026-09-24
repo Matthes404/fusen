@@ -1,0 +1,286 @@
+name: Pakete
+
+# Baut die App im Release-Modus für jede Plattform und packt sie so, wie man
+# sie installiert: APK, IPA, Installer für Windows, DMG für macOS, .deb und
+# Archiv für Linux. Aufgerufen von build.yml (zum Ausprobieren) und
+# release.yml (für ein GitHub-Release); jede Plattform landet als eigenes
+# Artefakt fusen-<plattform> mit den fertigen Dateien.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Angezeigte Version und Teil der Dateinamen, etwa 0.2.0 oder 0.2.0-dev.14
+        required: true
+        type: string
+      retention-days:
+        description: Wie lange die Artefakte aufbewahrt werden
+        required: false
+        type: number
+        default: 14
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+    outputs:
+      android-signed:
+        description: true, wenn die APK mit dem hinterlegten Schlüssel signiert ist
+        value: ${{ jobs.android.outputs.signed }}
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.3
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            app/android/**/*.gradle*
+            app/android/gradle/wrapper/gradle-wrapper.properties
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Signierschlüssel
+        id: signing
+        # Ohne hinterlegten Schlüssel signiert Gradle mit einem Debug-Schlüssel,
+        # der auf jedem Runner neu entsteht. Die APK läuft, aber eine spätere
+        # Version lässt sich nicht darüber installieren.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning title=APK ohne festen Schlüssel::Kein Secret ANDROID_KEYSTORE_BASE64 – die APK wird mit einem Debug-Schlüssel signiert. Einrichtung: CONTRIBUTING.md, Abschnitt Releases."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/fusen-upload.jks"
+            echo "FUSEN_KEYSTORE=$RUNNER_TEMP/fusen-upload.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bauen
+        working-directory: app
+        env:
+          FUSEN_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FUSEN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FUSEN_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter pub get
+          flutter build apk --release --dart-define=FUSEN_VERSION="$VERSION"
+
+      - name: Packen
+        run: |
+          mkdir -p dist
+          cp app/build/app/outputs/flutter-apk/app-release.apk "dist/fusen-$VERSION-android.apk"
+          # Der Fingerabdruck des Zertifikats – daran sieht man, ob wirklich
+          # der hinterlegte Schlüssel verwendet wurde.
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          {
+            echo '### Android-Signatur'
+            echo '```'
+            "$apksigner" verify --print-certs "dist/fusen-$VERSION-android.apk" | grep -E 'DN|SHA-256' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$RUNNER_TEMP/fusen-upload.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusen-android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  ios:
+    name: iOS (unsigniert)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Bauen
+        working-directory: app
+        # Signieren setzt ein Apple-Entwicklerkonto voraus. Unsigniert lässt
+        # sich die App mit AltStore oder Sideloadly über die eigene Apple-ID
+        # aufs Gerät bringen.
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign --dart-define=FUSEN_VERSION="$VERSION"
+
+      - name: Packen
+        run: |
+          mkdir -p dist ipa/Payload
+          ditto app/build/ios/iphoneos/Runner.app ipa/Payload/Runner.app
+          (cd ipa && zip -qry "../dist/fusen-$VERSION-ios-unsigniert.ipa" Payload)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusen-ios
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Bauen
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build macos --release --dart-define=FUSEN_VERSION="$VERSION"
+
+      - name: Packen
+        # Ein Abbild mit der App und einer Verknüpfung auf „Programme“ – man
+        # zieht das eine aufs andere. hdiutil scheitert auf den Runnern
+        # gelegentlich mit „Resource busy“, daher bis zu drei Versuche.
+        run: |
+          mkdir -p dist dmg
+          ditto app/build/macos/Build/Products/Release/Fusen.app dmg/Fusen.app
+          ln -s /Applications dmg/Applications
+          for attempt in 1 2 3; do
+            hdiutil create -volname Fusen -srcfolder dmg -ov -format UDZO \
+              "dist/fusen-$VERSION-macos.dmg" && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep 10
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusen-macos
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Bauen
+        working-directory: app
+        shell: bash
+        run: |
+          flutter pub get
+          flutter build windows --release --dart-define=FUSEN_VERSION="$VERSION"
+
+      - name: Packen
+        shell: pwsh
+        # Die Laufzeitbibliotheken von Visual C++ liegen bei – auf einem
+        # frisch eingerichteten Windows fehlen sie sonst, und Fusen startet
+        # mit einer Fehlermeldung über eine fehlende DLL.
+        run: |
+          $release = Resolve-Path 'app\build\windows\x64\runner\Release'
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:WINDIR\System32\$dll" $release
+          }
+
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $dist = Resolve-Path dist
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc /Qp "/DAppVersion=$env:VERSION" "/DBundleDir=$release" "/DOutputDir=$dist" `
+            app\windows\packaging\fusen.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Compress-Archive -Path "$release\*" `
+            -DestinationPath "$dist\fusen-$env:VERSION-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusen-windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+  linux:
+    name: Linux
+    # Gebaut auf dem ältesten noch unterstützten Ubuntu: das Programm
+    # verlangt dann keine neuere glibc als dort, und läuft so auch auf
+    # Debian 12, Ubuntu 22.04 und Mint 21.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux-Abhängigkeiten
+        # libkeybinder-3.0-dev braucht hotkey_manager für den globalen Hotkey.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev libkeybinder-3.0-dev libstdc++-12-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Bauen
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build linux --release --dart-define=FUSEN_VERSION="$VERSION"
+
+      - name: Packen
+        run: |
+          mkdir -p dist
+          app/linux/packaging/build_deb.sh "$VERSION" \
+            app/build/linux/x64/release/bundle "dist/fusen-$VERSION-linux-amd64.deb"
+          tar -C app/build/linux/x64/release --transform "s,^bundle,fusen-$VERSION," \
+            -czf "dist/fusen-$VERSION-linux-x64.tar.gz" bundle
+          dpkg-deb --info "dist/fusen-$VERSION-linux-amd64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fusen-linux
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

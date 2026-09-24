@@ -11,14 +11,46 @@ Gerät wieder auftauchen.
 Das ausführliche Konzept steht in [docs/konzept.md](docs/konzept.md), die
 technischen Entscheidungen in [docs/architektur.md](docs/architektur.md).
 
+## Installieren
+
+Fertige Pakete für alle Plattformen hängen am
+[neuesten Release](https://github.com/Matthes404/fusen/releases/latest):
+
+| Gerät | Datei | So geht's |
+|---|---|---|
+| Android | `fusen-<version>-android.apk` | auf dem Handy öffnen, Installation aus dem Browser erlauben |
+| iPhone, iPad | `fusen-<version>-ios-unsigniert.ipa` | unsigniert: mit [AltStore](https://altstore.io) oder [Sideloadly](https://sideloadly.io) über die eigene Apple-ID |
+| Windows 10/11 | `fusen-<version>-windows-setup.exe` | Installer, braucht keine Administratorrechte; alternativ die `.zip` entpacken |
+| macOS | `fusen-<version>-macos.dmg` | Fusen auf „Applications“ ziehen; beim ersten Start unter *Datenschutz & Sicherheit* „Dennoch öffnen“ |
+| Debian, Ubuntu, Mint | `fusen-<version>-linux-amd64.deb` | `sudo apt install ./fusen-<version>-linux-amd64.deb` |
+| anderes Linux | `fusen-<version>-linux-x64.tar.gz` | entpacken und `fusen` starten; braucht GTK 3 und libkeybinder-3.0 |
+
+Keine der Dateien ist bei Apple, Google oder Microsoft hinterlegt – daher
+die Rückfragen beim ersten Öffnen. Wie ein Release entsteht, steht in
+[CONTRIBUTING.md](CONTRIBUTING.md#releases).
+
 ## Was drin ist
 
 * **Schnelleingabe** – ein Textfeld, sonst nichts. `@projekt` ordnet zu,
-  `!typ` setzt den Zettel-Typ, `#tag` hängt ein Schlagwort an.
-  Beispiel: `@chess !schritt NNUE-Export auf int8 testen`.
+  `!typ` setzt den Zettel-Typ, `!hoch` / `!mittel` / `!niedrig` die
+  Priorität, `#tag` hängt ein Schlagwort an.
+  Beispiel: `@chess !schritt !hoch NNUE-Export auf int8 testen`.
   Enter speichert, Shift+Enter macht eine neue Zeile.
   Auf dem Desktop öffnet **Strg+Umschalt+Leertaste** von überall ein kleines
   Fenster – auch wenn Fusen gar nicht sichtbar ist.
+* **Aus Listen werden Zettel** – eine eingefügte Aufzählung legt pro Punkt
+  einen Zettel an, `[x]` gleich als erledigt. Im Projekt verteilt „Aus einer
+  Liste anlegen“ ganze Notizen samt Überschriften („Fragen:“, „Nächste
+  Schritte:“) auf die passenden Typen.
+* **Übersicht** als Startseite: jedes Projekt als Haftzettel mit Fortschritt,
+  nächstem Schritt und geltender Anweisung, darunter das Wichtigste aus allen
+  Projekten und das zuletzt Erledigte.
+* **Abhaken und priorisieren** direkt auf der Karte – mit einem Tipp auf den
+  Kreis, auf dem Handy auch per Wischen. Erledigtes behält sein Datum und
+  klappt weg; Löschen, Abhaken und Verschieben lassen sich zurücknehmen.
+* **Bilder an Zetteln** – aus der Galerie oder mit der Kamera, auf dem
+  Desktop auch per Strg+V aus der Zwischenablage oder einfach hineingezogen.
+  Sie werden verkleinert gespeichert und reisen beim Sync mit.
 * **Sieben Zettel-Typen** mit eigenen Regeln: Anforderung, Nächster Schritt,
   Aktuelle Anweisung, Idee, Frage, Log, Referenz. Jeder Zettel kann seinen Typ
   jederzeit wechseln.
@@ -37,16 +69,18 @@ technischen Entscheidungen in [docs/architektur.md](docs/architektur.md).
 
 | Typ | Kurzbefehl | Besonderheit |
 |---|---|---|
-| Anforderung | `!anf` | Status offen / umgesetzt / verworfen, Priorität Muss / Soll / Kann |
+| Anforderung | `!anf` | Status offen / umgesetzt / verworfen |
 | Nächster Schritt | `!schritt` | abhakbar, per Drag-and-drop sortierbar |
 | Aktuelle Anweisung | `!anw` | nur **eine** aktive pro Projekt, ältere wandern in den Verlauf |
-| Idee | `!idee` | Standard, wenn nichts angegeben ist |
+| Idee | `!idee` | Standard, wenn nichts angegeben ist; umsetzen oder verwerfen |
 | Frage | `!frage` | Feld für die Antwort; beantwortet heißt archiviert |
 | Log | `!log` | Zeitstempel, chronologisch, nach 24 Stunden festgeschrieben |
 | Referenz | `!ref` | Links, Befehle, Snippets – mit Kopier-Knopf |
 
-Die englischen Kurzbefehle (`!todo`, `!req`, `!now`, `!link`, …) funktionieren
-genauso.
+Anforderung, Schritt, Idee und Frage sind Aufgaben: sie tragen eine Priorität
+(hoch / mittel / niedrig) und lassen sich abhaken; wann, steht danach am
+Zettel. Die englischen Kurzbefehle (`!todo`, `!req`, `!now`, `!link`, `!high`,
+…) funktionieren genauso.
 
 ## App bauen und starten
 
@@ -75,8 +109,10 @@ flutter analyze
 flutter test
 ```
 
-Fertige Builds hängen an jedem Workflow-Lauf auf `main` – siehe
-[Actions](../../actions). Man muss also nicht lokal bauen, um etwas
+Installierbare Pakete zum Ausprobieren baut der Workflow *Builds* nach jedem
+Push auf `main` und auf jedem Branch, der Natives ändert (Plugins,
+Plattform-Einstellungen, Paketierung) – sie hängen als Artefakte am Lauf,
+siehe [Actions](../../actions). Man muss also nicht lokal bauen, um etwas
 auszuprobieren.
 
 ## Sync einrichten

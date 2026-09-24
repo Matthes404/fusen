@@ -14,7 +14,12 @@ enum NoteStatus {
   bool get isOpen => this == NoteStatus.open;
 }
 
-/// Flache Priorität für Anforderungen – bewusst keine Hierarchie.
+/// Flache Priorität – bewusst keine Hierarchie.
+///
+/// Die Namen stammen aus der Zeit, als nur Anforderungen eine Priorität
+/// hatten (Muss / Soll / Kann). Sie stehen so in der Datenbank und im
+/// Sync-Protokoll; für Schritte, Fragen und Ideen zeigt die Oberfläche
+/// dieselben drei Stufen als Hoch / Mittel / Niedrig.
 enum NotePriority {
   must,
   should,
@@ -26,4 +31,9 @@ enum NotePriority {
     NotePriority.should,
     NotePriority.could,
   ];
+
+  /// Sortierschlüssel: je kleiner, desto wichtiger. Ohne Priorität kommt
+  /// nach allen dreien.
+  static int rankOf(NotePriority? priority) =>
+      priority == null ? displayOrder.length : displayOrder.indexOf(priority);
 }

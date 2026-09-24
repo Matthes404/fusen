@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusen/src/core/clock.dart';
 import 'package:fusen/src/data/db/database.dart';
 import 'package:fusen/src/data/db/settings_store.dart';
 import 'package:fusen/src/data/models/note_status.dart';
+import 'package:fusen/src/data/attachments/image_prep.dart';
 import 'package:fusen/src/data/models/note_type.dart';
+import 'package:fusen/src/data/repositories/attachment_repository.dart';
 import 'package:fusen/src/data/repositories/note_repository.dart';
 import 'package:fusen/src/data/repositories/project_repository.dart';
 import 'package:fusen/src/sync/sync_backend.dart';
@@ -20,6 +24,15 @@ class FakeSyncBackend implements SyncBackend {
 
   final Map<String, (SyncProject, DateTime)> projects = {};
   final Map<String, (SyncNote, DateTime)> notes = {};
+  final Map<String, (SyncAttachment, DateTime)> attachments = {};
+  final Map<String, Uint8List> files = {};
+
+  /// Ein Server von vor Version 2 kennt keine Bilder.
+  bool supportsAttachments = true;
+
+  /// Wie oft eine Bilddatei tatsächlich mitgeschickt wurde.
+  int uploads = 0;
+  final Set<String> failDownloads = {};
 
   SyncCredentials? connectedWith;
   int connectCount = 0;
@@ -54,10 +67,14 @@ class FakeSyncBackend implements SyncBackend {
 
     final freshProjects = projects.values.where(isNew).toList();
     final freshNotes = notes.values.where(isNew).toList();
+    final freshAttachments = supportsAttachments
+        ? attachments.values.where(isNew).toList()
+        : const <(SyncAttachment, DateTime)>[];
     DateTime? cursor = since;
     for (final stamp in [
       ...freshProjects.map((e) => e.$2),
       ...freshNotes.map((e) => e.$2),
+      ...freshAttachments.map((e) => e.$2),
     ]) {
       if (cursor == null || stamp.isAfter(cursor)) cursor = stamp;
     }
@@ -65,9 +82,77 @@ class FakeSyncBackend implements SyncBackend {
     return RemoteBatch(
       projects: freshProjects.map((e) => e.$1).toList(),
       notes: freshNotes.map((e) => e.$1).toList(),
+      attachments: freshAttachments.map((e) => e.$1).toList(),
+      attachmentsSupported: supportsAttachments,
       cursor: cursor,
     );
   }
+
+  @override
+  Future<String?> pushAttachment(
+    SyncAttachment attachment, {
+    Uint8List? bytes,
+  }) async {
+    if (failWith != null) throw failWith!;
+    if (!supportsAttachments) {
+      throw const SyncBackendException('keine Bilder', isUnsupported: true);
+    }
+    final existing = attachments[attachment.id]?.$1;
+    String? remoteFile;
+    if (bytes == null) {
+      if (existing == null) {
+        throw const SyncBackendException('fehlt', isNotFound: true);
+      }
+      remoteFile = existing.remoteFile;
+    } else {
+      uploads++;
+      files[attachment.id] = bytes;
+      remoteFile = 'datei_${remoteIdFor(attachment.id)}.png';
+    }
+    attachments[attachment.id] = (
+      withFile(attachment, remoteFile),
+      _serverNow(),
+    );
+    return remoteFile;
+  }
+
+  @override
+  Future<Uint8List> downloadAttachment(SyncAttachment attachment) async {
+    if (failDownloads.contains(attachment.id)) {
+      throw const SyncBackendException('Download gescheitert');
+    }
+    final bytes = files[attachment.id];
+    if (bytes == null) {
+      throw const SyncBackendException('keine Datei', isNotFound: true);
+    }
+    return bytes;
+  }
+
+  /// Simuliert ein anderes Gerät, das ein Bild hochgeladen hat.
+  void seedAttachment(SyncAttachment attachment, List<int> bytes) {
+    files[attachment.id] = Uint8List.fromList(bytes);
+    attachments[attachment.id] = (
+      withFile(attachment, 'datei_${remoteIdFor(attachment.id)}.png'),
+      _serverNow(),
+    );
+  }
+
+  static SyncAttachment withFile(SyncAttachment a, String? remoteFile) =>
+      SyncAttachment(
+        id: a.id,
+        noteId: a.noteId,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        byteSize: a.byteSize,
+        width: a.width,
+        height: a.height,
+        sortOrder: a.sortOrder,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        deletedAt: a.deletedAt,
+        deviceId: a.deviceId,
+        remoteFile: remoteFile,
+      );
 
   @override
   Future<void> push({
@@ -109,6 +194,27 @@ SyncNote remoteNote({
     createdAt: updatedAt,
     updatedAt: updatedAt,
     deletedAt: deletedAt,
+    deviceId: 'anderes-geraet',
+  );
+}
+
+SyncAttachment remoteAttachment({
+  required String id,
+  String noteId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeffff0001',
+  DateTime? updatedAt,
+}) {
+  final at = updatedAt ?? DateTime.utc(2026, 5, 1, 11);
+  return SyncAttachment(
+    id: id,
+    noteId: noteId,
+    fileName: 'skizze.png',
+    mimeType: 'image/png',
+    byteSize: 3,
+    width: 3,
+    height: 1,
+    sortOrder: 1024,
+    createdAt: at,
+    updatedAt: at,
     deviceId: 'anderes-geraet',
   );
 }
@@ -448,6 +554,187 @@ void main() {
       expect(onServer.id, note.id);
       expect(onServer.toJson()['id'], remoteIdFor(note.id));
       expect(SyncNote.fromJson(onServer.toJson()).id, note.id);
+    });
+  });
+
+  group('Abschlusszeitpunkt', () {
+    test('reist mit dem Zettel', () async {
+      final step = await notes.create(type: NoteType.step, body: 'bauen');
+      clock.advance(const Duration(minutes: 3));
+      await notes.setStatus(step.id, NoteStatus.done);
+
+      await sync.syncNow();
+
+      final remote = backend.notes[step.id]!.$1;
+      expect(remote.closedAt, DateTime.utc(2026, 5, 1, 12, 3));
+      expect(remote.toJson()['closed_at'], '2026-05-01T12:03:00.000Z');
+    });
+
+    test('Zettel von vor Version 2 bekommen die letzte Änderung', () {
+      final json = remoteNote(
+        id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeffff0001',
+        updatedAt: DateTime.utc(2026, 1, 3, 10),
+        status: NoteStatus.done,
+      ).toJson()..['closed_at'] = '';
+
+      expect(SyncNote.fromJson(json).closedAt, DateTime.utc(2026, 1, 3, 10));
+      expect(SyncNote.fromJson(json..['status'] = 'open').closedAt, isNull);
+    });
+  });
+
+  group('Bilder', () {
+    late AttachmentRepository attachments;
+
+    PreparedImage png([List<int> bytes = const [1, 2, 3]]) => PreparedImage(
+      bytes: Uint8List.fromList(bytes),
+      mimeType: 'image/png',
+      fileName: 'skizze.png',
+      width: 3,
+      height: 1,
+    );
+
+    setUp(() {
+      attachments = AttachmentRepository(
+        db,
+        deviceId: 'dieses-geraet',
+        clock: clock,
+      );
+    });
+
+    test(
+      'ein neues Bild geht samt Datei hoch, danach nur die Beschreibung',
+      () async {
+        final note = await notes.create(body: 'mit Bild');
+        final image = await attachments.add(note.id, png());
+
+        final first = await sync.syncNow();
+        expect(first.isSuccess, isTrue);
+        expect(first.warning, isNull);
+        expect(backend.uploads, 1);
+        expect(backend.files[image.id], [1, 2, 3]);
+        final local = (await attachments.findById(image.id))!;
+        expect(local.uploaded, isTrue);
+        expect(local.pendingSync, isFalse);
+        expect(local.remoteFile, isNotNull);
+
+        clock.advance(const Duration(minutes: 1));
+        await attachments.delete(image.id);
+        await sync.syncNow();
+
+        expect(backend.uploads, 1, reason: 'Die Datei geht nur einmal mit.');
+        expect(backend.attachments[image.id]!.$1.deletedAt, isNotNull);
+      },
+    );
+
+    test(
+      'ein Bild vom anderen Gerät wird geholt und heruntergeladen',
+      () async {
+        backend.seedAttachment(
+          remoteAttachment(id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeffff00a1'),
+          const [9, 8, 7],
+        );
+
+        final outcome = await sync.syncNow();
+
+        expect(outcome.isSuccess, isTrue);
+        final local = (await attachments.forNote(
+          'aaaaaaaa-bbbb-cccc-dddd-eeeeffff0001',
+        )).single;
+        expect(local.hasData, isTrue);
+        expect(local.uploaded, isTrue);
+        expect(local.pendingSync, isFalse);
+        expect(await attachments.readBytes(local.id), [9, 8, 7]);
+      },
+    );
+
+    test(
+      'schon wieder entfernt, bevor es oben war: geht gar nicht erst hoch',
+      () async {
+        final note = await notes.create(body: 'x');
+        final image = await attachments.add(note.id, png());
+        await attachments.delete(image.id);
+
+        await sync.syncNow();
+
+        expect(backend.attachments, isEmpty);
+        expect((await attachments.findById(image.id))!.pendingSync, isFalse);
+      },
+    );
+
+    test('ein alter Server ohne Bilder hält den Rest nicht auf', () async {
+      backend.supportsAttachments = false;
+      final note = await notes.create(body: 'Zettel mit Bild');
+      final image = await attachments.add(note.id, png());
+
+      final outcome = await sync.syncNow();
+
+      expect(outcome.isSuccess, isTrue);
+      expect(outcome.warning, contains('keine Bilder'));
+      expect(backend.notes.containsKey(note.id), isTrue);
+      // Das Bild wartet, bis der Server aktualisiert ist.
+      expect((await attachments.findById(image.id))!.pendingSync, isTrue);
+
+      backend.supportsAttachments = true;
+      final later = await sync.syncNow();
+      expect(later.warning, isNull);
+      expect(backend.files[image.id], [1, 2, 3]);
+    });
+
+    test(
+      'ein Bild, das nicht kommt, wird beim nächsten Mal nachgeholt',
+      () async {
+        const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeffff00a2';
+        backend.seedAttachment(remoteAttachment(id: id), const [5]);
+        backend.failDownloads.add(id);
+
+        final first = await sync.syncNow();
+        expect(first.isSuccess, isTrue);
+        expect(first.warning, 'Ein Bild ließ sich nicht laden.');
+        expect((await attachments.findById(id))!.hasData, isFalse);
+
+        backend.failDownloads.clear();
+        await sync.syncNow();
+        expect(await attachments.readBytes(id), [5]);
+      },
+    );
+
+    test(
+      'hat der Server das Bild verloren, geht die Datei erneut hoch',
+      () async {
+        final note = await notes.create(body: 'x');
+        final image = await attachments.add(note.id, png());
+        await sync.syncNow();
+        backend.attachments.clear();
+        backend.files.clear();
+
+        clock.advance(const Duration(minutes: 1));
+        await attachments.delete(image.id);
+        await attachments.restore(image.id);
+        await sync.syncNow();
+        expect((await attachments.findById(image.id))!.uploaded, isFalse);
+
+        await sync.syncNow();
+        expect(backend.files[image.id], [1, 2, 3]);
+        expect((await attachments.findById(image.id))!.uploaded, isTrue);
+      },
+    );
+
+    test('die Beschreibung überlebt den Weg über die Leitung', () {
+      final original = remoteAttachment(
+        id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeffff00a3',
+      );
+      final json = original.toJson()..['file'] = 'skizze_ab12cd.png';
+
+      final back = SyncAttachment.fromJson(json);
+
+      expect(back.id, original.id);
+      expect(back.noteId, original.noteId);
+      expect(back.fileName, 'skizze.png');
+      expect(back.remoteFile, 'skizze_ab12cd.png');
+      expect((back.width, back.height), (3, 1));
+      expect(json['id'], 'aaaaaaaabbbbccccddddeeeeffff00a3');
+      expect(json.containsKey('file'), isTrue);
+      expect(original.toJson().containsKey('file'), isFalse);
     });
   });
 }

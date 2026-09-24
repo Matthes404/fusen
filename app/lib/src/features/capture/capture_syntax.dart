@@ -1,3 +1,4 @@
+import '../../data/models/note_status.dart';
 import '../../data/models/note_type.dart';
 
 /// Ergebnis der Schnelleingabe: was der Nutzer getippt hat, aufgeteilt in
@@ -7,6 +8,7 @@ class CaptureDraft {
     required this.body,
     this.projectQuery,
     this.type,
+    this.priority,
     this.tags = const [],
   });
 
@@ -19,6 +21,9 @@ class CaptureDraft {
   /// Was hinter `!` stand, sofern es ein bekannter Typ war.
   final NoteType? type;
 
+  /// Was hinter `!` stand, sofern es eine Priorität war (`!hoch`, `!muss`).
+  final NotePriority? priority;
+
   /// Alle `#tags`, klein geschrieben und ohne Dubletten.
   final List<String> tags;
 
@@ -27,7 +32,7 @@ class CaptureDraft {
   @override
   String toString() =>
       'CaptureDraft(body: "$body", project: $projectQuery, type: $type, '
-      'tags: $tags)';
+      'priority: $priority, tags: $tags)';
 }
 
 /// Kurzbefehle für Zettel-Typen.
@@ -67,6 +72,44 @@ const Map<String, NoteType> captureTypeAliases = {
   'link': NoteType.reference,
 };
 
+/// Kurzbefehle für die Priorität. Sie teilen sich das `!` mit den Typen –
+/// die Wörter überschneiden sich nicht, und `!schritt !hoch` liest sich wie
+/// ein Satz.
+///
+/// Muss / Soll / Kann und Hoch / Mittel / Niedrig sind dieselben drei
+/// Stufen; welche Wörter die Oberfläche zeigt, hängt vom Typ ab.
+const Map<String, NotePriority> capturePriorityAliases = {
+  // Hoch
+  'hoch': NotePriority.must,
+  'muss': NotePriority.must,
+  'wichtig': NotePriority.must,
+  'dringend': NotePriority.must,
+  'p1': NotePriority.must,
+  'high': NotePriority.must,
+  'must': NotePriority.must,
+  'urgent': NotePriority.must,
+  // Mittel
+  'mittel': NotePriority.should,
+  'soll': NotePriority.should,
+  'p2': NotePriority.should,
+  'medium': NotePriority.should,
+  'med': NotePriority.should,
+  'should': NotePriority.should,
+  // Niedrig
+  'niedrig': NotePriority.could,
+  'kann': NotePriority.could,
+  'p3': NotePriority.could,
+  'low': NotePriority.could,
+  'could': NotePriority.could,
+};
+
+/// Der Kurzbefehl, der in der Oberfläche als Hilfe angezeigt wird.
+const Map<NotePriority, String> canonicalPriorityAlias = {
+  NotePriority.must: 'hoch',
+  NotePriority.should: 'mittel',
+  NotePriority.could: 'niedrig',
+};
+
 /// Der Kurzbefehl, der in der Oberfläche als Hilfe angezeigt wird.
 const Map<NoteType, String> canonicalTypeAlias = {
   NoteType.requirement: 'anf',
@@ -93,6 +136,7 @@ final RegExp _markerPattern = RegExp(
 CaptureDraft parseCapture(String input) {
   String? projectQuery;
   NoteType? type;
+  NotePriority? priority;
   final tags = <String>[];
   final consumed = <_Range>[];
 
@@ -105,9 +149,16 @@ CaptureDraft parseCapture(String input) {
         if (projectQuery != null) continue;
         projectQuery = word;
       case '!':
-        final resolved = captureTypeAliases[word.toLowerCase()];
-        if (resolved == null || type != null) continue;
-        type = resolved;
+        final key = word.toLowerCase();
+        final asType = captureTypeAliases[key];
+        final asPriority = capturePriorityAliases[key];
+        if (asType != null && type == null) {
+          type = asType;
+        } else if (asPriority != null && priority == null) {
+          priority = asPriority;
+        } else {
+          continue;
+        }
       case '#':
         final tag = word.toLowerCase();
         if (!tags.contains(tag)) tags.add(tag);
@@ -121,6 +172,7 @@ CaptureDraft parseCapture(String input) {
     body: _removeRanges(input, consumed).trim(),
     projectQuery: projectQuery,
     type: type,
+    priority: priority,
     tags: List.unmodifiable(tags),
   );
 }

@@ -46,28 +46,84 @@ extension NoteTypeStyle on NoteType {
     NoteType.log => Icons.history,
   };
 
-  Color color(ColorScheme scheme) => switch (this) {
-    NoteType.instruction => const Color(0xFFE5484D),
-    NoteType.step => const Color(0xFF30A46C),
-    NoteType.question => const Color(0xFFFFB224),
-    NoteType.requirement => const Color(0xFF0091FF),
-    NoteType.idea => const Color(0xFF6E56CF),
-    NoteType.reference => const Color(0xFF12A594),
-    NoteType.log => scheme.outline,
-  };
+  /// Die Kennfarbe des Typs.
+  ///
+  /// Zwei Sätze statt einem: dieselbe Farbe, die auf Papier kräftig wirkt,
+  /// leuchtet im Dunkeln viel zu grell. Beide Sätze sind gegen ihren
+  /// Untergrund auf Lesbarkeit geprüft.
+  Color color(ColorScheme scheme) {
+    final light = scheme.brightness == Brightness.light;
+    return switch (this) {
+      NoteType.instruction =>
+        light ? const Color(0xFFBE2B54) : const Color(0xFFFF94B0),
+      NoteType.step =>
+        light ? const Color(0xFF1E7A4C) : const Color(0xFF5FD196),
+      NoteType.question =>
+        light ? const Color(0xFFC2410C) : const Color(0xFFFFA26B),
+      NoteType.requirement =>
+        light ? const Color(0xFF1160B0) : const Color(0xFF7CC0FF),
+      NoteType.idea =>
+        light ? const Color(0xFF6D3FC4) : const Color(0xFFBFAAFF),
+      NoteType.reference =>
+        light ? const Color(0xFF0E7C72) : const Color(0xFF5FD9CC),
+      NoteType.log => scheme.outline,
+    };
+  }
+
+  /// Der Hauch Farbe, den der Zettel selbst bekommt.
+  ///
+  /// Gerade so viel, dass ein Stapel Zettel nach Typ sortiert aussieht,
+  /// ohne dass der Text darauf schlechter zu lesen wäre. Das Log bleibt
+  /// bewusst farblos – ein Protokoll ist Hintergrund, kein Blickfang.
+  Color wash(ColorScheme scheme) {
+    if (this == NoteType.log) return const Color(0x00000000);
+    final strength = scheme.brightness == Brightness.light ? 0.055 : 0.07;
+    return color(scheme).withValues(alpha: strength);
+  }
 }
 
 extension NotePriorityStyle on NotePriority {
+  /// Die Bezeichnung, wie sie bei Anforderungen steht (Muss / Soll / Kann).
+  /// Für alle anderen Typen: [priorityLabel].
   String get label => switch (this) {
     NotePriority.must => 'Muss',
     NotePriority.should => 'Soll',
     NotePriority.could => 'Kann',
   };
 
-  Color get color => switch (this) {
-    NotePriority.must => const Color(0xFFE5484D),
-    NotePriority.should => const Color(0xFFF76B15),
-    NotePriority.could => const Color(0xFF8B8D98),
+  /// Pfeile wie in einem Ticketsystem: je höher, desto wichtiger.
+  IconData get icon => switch (this) {
+    NotePriority.must => Icons.keyboard_double_arrow_up_rounded,
+    NotePriority.should => Icons.keyboard_arrow_up_rounded,
+    NotePriority.could => Icons.keyboard_arrow_down_rounded,
+  };
+
+  Color color(ColorScheme scheme) {
+    final light = scheme.brightness == Brightness.light;
+    return switch (this) {
+      NotePriority.must =>
+        light ? const Color(0xFFBE2B54) : const Color(0xFFFF94B0),
+      NotePriority.should =>
+        light ? const Color(0xFFC2410C) : const Color(0xFFFFA26B),
+      NotePriority.could => scheme.onSurfaceVariant,
+    };
+  }
+
+  /// Wie dringlich das aussehen soll: „Muss“ trägt Farbe, „Kann“ nicht.
+  bool get isEmphasised => this != NotePriority.could;
+}
+
+/// Die Priorität so, wie sie beim Typ heißt.
+///
+/// Anforderungen behalten Muss / Soll / Kann aus dem Konzept – dort ist das
+/// eine Aussage über das Ergebnis. Für Schritte, Fragen und Ideen wäre
+/// „Muss“ schief; dieselben drei Stufen heißen dort Hoch / Mittel / Niedrig.
+String priorityLabel(NoteType type, NotePriority priority) {
+  if (type == NoteType.requirement) return priority.label;
+  return switch (priority) {
+    NotePriority.must => 'Hoch',
+    NotePriority.should => 'Mittel',
+    NotePriority.could => 'Niedrig',
   };
 }
 
@@ -78,8 +134,16 @@ String statusLabel(NoteType type, NoteStatus status) =>
       (_, NoteStatus.open) when type == NoteType.instruction => 'gilt gerade',
       (_, NoteStatus.open) => 'offen',
       (NoteType.requirement, NoteStatus.done) => 'umgesetzt',
+      (NoteType.idea, NoteStatus.done) => 'umgesetzt',
       (NoteType.question, NoteStatus.done) => 'beantwortet',
       (NoteType.instruction, NoteStatus.done) => 'im Verlauf',
       (_, NoteStatus.done) => 'erledigt',
       (_, NoteStatus.discarded) => 'verworfen',
     };
+
+/// Die Überschrift über dem, was in einem Bereich abgeschlossen ist.
+String closedGroupLabel(NoteType type) => switch (type) {
+  NoteType.requirement || NoteType.idea => 'Umgesetzt oder verworfen',
+  NoteType.question => 'Geklärt',
+  _ => 'Erledigt',
+};

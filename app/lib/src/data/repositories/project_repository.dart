@@ -4,6 +4,7 @@ import '../../core/clock.dart';
 import '../../core/ids.dart';
 import '../../core/sort_order.dart';
 import '../db/database.dart';
+import 'attachment_repository.dart';
 
 /// Vorschlagsfarben für neue Projekte (ARGB).
 const List<int> projectPalette = [
@@ -110,10 +111,20 @@ class ProjectRepository {
       _update(id, const ProjectsCompanion(archivedAt: Value(null)));
 
   /// Setzt einen Tombstone statt hart zu löschen, damit die Löschung auf
-  /// anderen Geräten ankommt. Die Zettel des Projekts werden mitgelöscht.
+  /// anderen Geräten ankommt. Die Zettel des Projekts werden mitgelöscht,
+  /// ihre Bilder ebenso.
   Future<void> delete(String id) async {
     final now = _clock.now();
     await _db.transaction(() async {
+      final noteIds =
+          await (_db.selectOnly(_db.notes)
+                ..addColumns([_db.notes.id])
+                ..where(
+                  _db.notes.projectId.equals(id) & _db.notes.deletedAt.isNull(),
+                ))
+              .map((row) => row.read(_db.notes.id)!)
+              .get();
+      await tombstoneAttachmentsOf(_db, noteIds, now: now);
       await (_db.update(_db.projects)..where((t) => t.id.equals(id))).write(
         ProjectsCompanion(
           deletedAt: Value(now),

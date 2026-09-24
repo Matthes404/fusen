@@ -1,109 +1,66 @@
 name: Release
 
-# Ein Tag v* erzeugt Release-Builds für alle Plattformen, hängt sie an ein
-# GitHub-Release und schiebt das Server-Image nach GHCR.
+# Ein GitHub-Release mit installierbaren Paketen für alle Plattformen und
+# dem Server-Image. Zwei Wege dorthin:
+# * „Actions → Release → Run workflow“ auf dem gewünschten Branch: der Lauf
+#   liest die Version aus app/pubspec.yaml und legt den Tag v<version>
+#   selbst an;
+# * einen Tag v<version> pushen, der zur Version in app/pubspec.yaml passt.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
   packages: write
 
-env:
-  FLUTTER_VERSION: 3.47.3
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  app:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Android (APK)
-            os: ubuntu-latest
-            target: apk
-            artifact: fusen-android
-          - name: Linux
-            os: ubuntu-latest
-            target: linux
-            artifact: fusen-linux
-          - name: Windows
-            os: windows-latest
-            target: windows
-            artifact: fusen-windows
-          - name: macOS
-            os: macos-latest
-            target: macos
-            artifact: fusen-macos
-
+  plan:
+    name: Version prüfen
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      image: ${{ steps.version.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
-        if: matrix.target == 'apk'
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Linux-Abhängigkeiten
-        if: matrix.target == 'linux'
-        # libkeybinder-3.0-dev braucht hotkey_manager für den globalen
-        # Hotkey; ohne das Paket bricht CMake ab, bevor überhaupt etwas
-        # übersetzt wird.
+      - id: version
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libkeybinder-3.0-dev
+          version="$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)"
+          if [ -z "$version" ]; then
+            echo "::error::Keine Version in app/pubspec.yaml gefunden."
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Der Tag $GITHUB_REF_NAME passt nicht zur Version $version in app/pubspec.yaml."
+            exit 1
+          fi
+          # Image-Namen müssen klein geschrieben sein, der Repository-Name
+          # ist es nicht.
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-server"
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Pakete holen
-        working-directory: app
-        run: flutter pub get
-
-      - name: Bauen
-        working-directory: app
-        run: flutter build ${{ matrix.target }} --release
-
-      - name: Zusammenpacken
-        working-directory: app
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          mkdir -p ../dist
-          case "${{ matrix.target }}" in
-            apk)
-              mv build/app/outputs/flutter-apk/app-release.apk \
-                 "../dist/fusen-${version}-android.apk"
-              ;;
-            linux)
-              tar -C build/linux/x64/release -czf \
-                "../dist/fusen-${version}-linux-x64.tar.gz" bundle
-              ;;
-            windows)
-              7z a "../dist/fusen-${version}-windows-x64.zip" \
-                ./build/windows/x64/runner/Release/*
-              ;;
-            macos)
-              ditto -c -k --sequesterRsrc --keepParent \
-                build/macos/Build/Products/Release/fusen.app \
-                "../dist/fusen-${version}-macos.zip"
-              ;;
-          esac
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: dist/*
-          if-no-files-found: error
+  app:
+    name: App
+    needs: plan
+    uses: ./.github/workflows/package.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      retention-days: 7
+    secrets: inherit
 
   server:
     name: Server-Image
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,10 +77,10 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}-server
+          images: ${{ needs.plan.outputs.image }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ needs.plan.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.plan.outputs.tag }}
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6
@@ -136,35 +93,81 @@ jobs:
 
   release:
     name: Release veröffentlichen
-    needs: [app, server]
+    needs: [plan, app, server]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: fusen-*
           path: dist
           merge-multiple: true
 
+      - name: Prüfsummen
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS.txt
+
+      - name: Text
+        # Die Vorlage steht in einem Heredoc mit 'EOF', damit Backticks und
+        # Backslashes darin bleiben, was sie sind; eingesetzt werden danach
+        # nur die Platzhalter @…@.
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          IMAGE: ${{ needs.plan.outputs.image }}
+          SIGNED: ${{ needs.app.outputs.android-signed }}
+        run: |
+          WARNING=""
+          if [ "$SIGNED" != true ]; then
+            WARNING="$(cat <<'EOF'
+
+          > [!WARNING]
+          > Diese APK trägt noch keinen festen Signierschlüssel. Eine spätere Version lässt sich deshalb nicht darüber installieren, sondern erst nach dem Deinstallieren – und dabei gehen Zettel verloren, die nicht mit einem Sync-Server abgeglichen sind.
+          EOF
+          )"
+          fi
+
+          cat > notes.tmpl <<'EOF'
+          ## Installieren
+
+          **Android** – `fusen-@VERSION@-android.apk` auf dem Handy herunterladen und öffnen. Beim ersten Mal fragt Android, ob der Browser Apps installieren darf: erlauben.
+          @WARNING@
+
+          **iPhone und iPad** – `fusen-@VERSION@-ios-unsigniert.ipa` ist nicht signiert. Mit [AltStore](https://altstore.io) oder [Sideloadly](https://sideloadly.io) lässt sie sich über die eigene Apple-ID installieren (mit einer kostenlosen Apple-ID alle 7 Tage neu).
+
+          **Windows 10 und 11** – `fusen-@VERSION@-windows-setup.exe` starten; installiert ohne Administratorrechte. Meldet SmartScreen „Der Computer wurde durch Windows geschützt“: „Weitere Informationen“ → „Trotzdem ausführen“. Ohne Installation: `fusen-@VERSION@-windows-x64.zip` entpacken und `fusen.exe` starten.
+
+          **macOS** – `fusen-@VERSION@-macos.dmg` öffnen und Fusen auf „Applications“ ziehen. Die App ist nicht von Apple beglaubigt: beim ersten Start die Meldung schließen, dann unter *Systemeinstellungen → Datenschutz & Sicherheit* „Dennoch öffnen“ wählen.
+
+          **Linux** – Debian, Ubuntu, Mint: `sudo apt install ./fusen-@VERSION@-linux-amd64.deb`. Andere Distributionen: `fusen-@VERSION@-linux-x64.tar.gz` entpacken und `fusen` starten (braucht GTK 3 und libkeybinder-3.0).
+
+          Die Prüfsummen aller Dateien stehen in `SHA256SUMS.txt`.
+
+          ## Sync-Server (optional)
+
+          Ohne Server bleibt alles auf dem Gerät. Wer mehrere Geräte abgleichen will:
+
+          ```bash
+          docker run -d -p 127.0.0.1:8090:8090 \
+            -e FUSEN_ACCESS_CODE=deincode \
+            -v fusen_data:/pb/pb_data \
+            @IMAGE@:@VERSION@
+          ```
+
+          Einrichtung Schritt für Schritt: [server/README.md](https://github.com/@REPOSITORY@/blob/v@VERSION@/server/README.md)
+          EOF
+          notes="$(< notes.tmpl)"
+          notes="${notes//@VERSION@/"$VERSION"}"
+          notes="${notes//@IMAGE@/"$IMAGE"}"
+          notes="${notes//@WARNING@/"$WARNING"}"
+          notes="${notes//@REPOSITORY@/"$GITHUB_REPOSITORY"}"
+          printf '%s\n' "$notes" | tee notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          tag_name: ${{ needs.plan.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Fusen ${{ needs.plan.outputs.version }}
+          body_path: notes.md
           generate_release_notes: true
-          draft: false
-          body: |
-            ## Installieren
-
-            * **Android**: die `.apk` herunterladen und öffnen
-              (Installation aus unbekannter Quelle erlauben).
-            * **Linux**: `.tar.gz` entpacken, `bundle/fusen` starten.
-            * **Windows**: `.zip` entpacken, `fusen.exe` starten.
-            * **macOS**: `.zip` entpacken, `fusen.app` nach „Programme“ ziehen.
-
-            ## Sync-Server
-
-            ```bash
-            docker run -d -p 127.0.0.1:8090:8090 \
-              -e FUSEN_ACCESS_CODE=deincode \
-              -v fusen_data:/pb/pb_data \
-              ghcr.io/${{ github.repository }}-server:latest
-            ```
-
-            Einrichtung Schritt für Schritt: [server/README.md](server/README.md).
+          prerelease: ${{ contains(needs.plan.outputs.version, '-') }}
+          files: dist/*
+          fail_on_unmatched_files: true

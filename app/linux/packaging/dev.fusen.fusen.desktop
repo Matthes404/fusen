@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Fusen
+GenericName=Notizen nach Projekt
+GenericName[en]=Notes by project
+Comment=Ein digitaler Stapel Haftnotizen, sortiert nach Projekt
+Comment[en]=A digital stack of sticky notes, sorted by project
+Exec=fusen
+Icon=dev.fusen.fusen
+Terminal=false
+Categories=Office;ProjectManagement;
+Keywords=Notizen;Zettel;Aufgaben;Projekt;Notes;Tasks;Todo;
+StartupNotify=true
+StartupWMClass=fusen
