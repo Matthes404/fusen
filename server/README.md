@@ -72,10 +72,28 @@ mehr hat, verliert damit den Zugriff.
 | `access` | Ein Datensatz: der Zugang. Der Code ist sein Passwort. | Lesen und Schreiben nur für Administratoren, Anmelden für jeden mit dem richtigen Code |
 | `projects` | Projekte | Lesen und Schreiben nur mit gültigem Token |
 | `notes` | Zettel | Lesen und Schreiben nur mit gültigem Token |
+| `attachments` | Bilder an Zetteln, die Datei im Feld `file` | Lesen und Schreiben nur mit gültigem Token; die Datei selbst nur mit einem kurzlebigen Datei-Token |
 
-**Gelöscht wird nie hart.** Beide Collections haben keine Delete-Regel; eine
+**Gelöscht wird nie hart.** Keine der Collections hat eine Delete-Regel; eine
 Löschung reist als `deleted_at`. Ein Datensatz, der einfach verschwände, käme
 beim nächsten Abgleich vom anderen Gerät zurück.
+
+**Bilder** sind geschützte Dateien: wer nur die Adresse kennt, bekommt sie
+nicht. Die App holt sich vor dem Herunterladen ein Datei-Token, das nur ein
+angemeldetes Gerät bekommt. Angenommen werden JPEG, PNG, GIF, WebP, BMP und
+HEIC bis 25 MB; die App verkleinert große Fotos vorher auf 2048 Pixel.
+
+## Aktualisieren
+
+Neue Versionen bringen ihre Migrationen mit; sie laufen beim Start von selbst.
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Die App kommt auch mit einem älteren Server zurecht: Zettel gleichen dann
+weiter ab, nur Bilder bleiben auf dem Gerät, bis der Server aktualisiert ist –
+die App sagt das unter **Einstellungen → Sync** dazu.
 
 Die Datensatz-ID ist die UUID des Geräts ohne Bindestriche. Dadurch kennt
 jedes Gerät die Server-ID eines Zettels, ohne nachfragen zu müssen.

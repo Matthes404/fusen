@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusen/src/core/clock.dart';
 import 'package:fusen/src/data/db/database.dart';
 import 'package:fusen/src/data/models/note_status.dart';
 import 'package:fusen/src/data/models/note_type.dart';
+import 'package:fusen/src/data/attachments/image_prep.dart';
+import 'package:fusen/src/data/repositories/attachment_repository.dart';
 import 'package:fusen/src/data/repositories/note_repository.dart';
 import 'package:fusen/src/data/repositories/project_repository.dart';
 
@@ -12,13 +16,25 @@ void main() {
   late FixedClock clock;
   late ProjectRepository projects;
   late NoteRepository notes;
+  late AttachmentRepository attachments;
 
   setUp(() {
     clock = FixedClock(DateTime.utc(2026, 3, 1, 9));
     db = FusenDatabase.memory();
     projects = ProjectRepository(db, clock: clock);
     notes = NoteRepository(db, deviceId: 'test-device', clock: clock);
+    attachments = AttachmentRepository(
+      db,
+      deviceId: 'test-device',
+      clock: clock,
+    );
   });
+
+  PreparedImage pixel() => PreparedImage(
+    bytes: Uint8List.fromList(const [0x89, 0x50, 0x4E, 0x47, 1, 2, 3]),
+    mimeType: 'image/png',
+    fileName: 'pixel.png',
+  );
 
   tearDown(() => db.close());
 
@@ -259,17 +275,55 @@ void main() {
       );
       await notes.setPriority(requirement.id, NotePriority.must);
 
-      await notes.changeType(requirement.id, NoteType.step);
+      await notes.changeType(requirement.id, NoteType.reference);
 
       expect((await notes.findById(requirement.id))!.priority, isNull);
     });
 
-    test('Priorität lässt sich nur bei Anforderungen setzen', () async {
-      final step = await notes.create(type: NoteType.step, body: 'bauen');
+    test('Priorität wandert mit, solange der neue Typ sie kennt', () async {
+      final idea = await notes.create(type: NoteType.idea, body: 'Undo');
+      await notes.setPriority(idea.id, NotePriority.should);
 
-      await notes.setPriority(step.id, NotePriority.must);
+      await notes.changeType(idea.id, NoteType.step);
 
-      expect((await notes.findById(step.id))!.priority, isNull);
+      expect((await notes.findById(idea.id))!.priority, NotePriority.should);
+    });
+
+    test('Priorität gibt es für alles, was man abarbeitet', () async {
+      for (final type in [
+        NoteType.step,
+        NoteType.requirement,
+        NoteType.question,
+        NoteType.idea,
+      ]) {
+        final note = await notes.create(type: type, body: type.name);
+        await notes.setPriority(note.id, NotePriority.must);
+        expect(
+          (await notes.findById(note.id))!.priority,
+          NotePriority.must,
+          reason: type.name,
+        );
+      }
+    });
+
+    test('Anweisung, Referenz und Log tragen keine Priorität', () async {
+      for (final type in [
+        NoteType.instruction,
+        NoteType.reference,
+        NoteType.log,
+      ]) {
+        final note = await notes.create(
+          type: type,
+          body: type.name,
+          priority: NotePriority.must,
+        );
+        await notes.setPriority(note.id, NotePriority.must);
+        expect(
+          (await notes.findById(note.id))!.priority,
+          isNull,
+          reason: type.name,
+        );
+      }
     });
   });
 
@@ -504,6 +558,207 @@ void main() {
 
       await notes.updateContent(note.id, body: 'geändert');
       expect((await notes.findById(note.id))!.pendingSync, isTrue);
+    });
+  });
+
+  group('Abschließen', () {
+    test('Abhaken merkt sich den Zeitpunkt', () async {
+      final step = await notes.create(type: NoteType.step, body: 'bauen');
+      expect(step.closedAt, isNull);
+
+      clock.advance(const Duration(hours: 2));
+      await notes.setStatus(step.id, NoteStatus.done);
+
+      expect(
+        (await notes.findById(step.id))!.closedAt,
+        DateTime.utc(2026, 3, 1, 11),
+      );
+    });
+
+    test('Wiederöffnen löscht den Zeitpunkt', () async {
+      final step = await notes.create(type: NoteType.step, body: 'bauen');
+      await notes.setStatus(step.id, NoteStatus.done);
+
+      await notes.setStatus(step.id, NoteStatus.open);
+
+      expect((await notes.findById(step.id))!.closedAt, isNull);
+    });
+
+    test('von erledigt zu verworfen bleibt der erste Zeitpunkt', () async {
+      final idea = await notes.create(type: NoteType.idea, body: 'vielleicht');
+      await notes.setStatus(idea.id, NoteStatus.done);
+      clock.advance(const Duration(days: 1));
+
+      await notes.setStatus(idea.id, NoteStatus.discarded);
+
+      expect(
+        (await notes.findById(idea.id))!.closedAt,
+        DateTime.utc(2026, 3, 1, 9),
+      );
+    });
+
+    test('abgehakt anlegen setzt den Zeitpunkt gleich mit', () async {
+      final step = await notes.create(
+        type: NoteType.step,
+        body: 'war schon',
+        status: NoteStatus.done,
+      );
+
+      expect(step.status, NoteStatus.done);
+      expect(step.closedAt, DateTime.utc(2026, 3, 1, 9));
+    });
+
+    test('eine beantwortete Frage ist abgeschlossen', () async {
+      final question = await notes.create(
+        type: NoteType.question,
+        body: 'Wann?',
+      );
+
+      await notes.answerQuestion(question.id, 'Morgen');
+
+      expect((await notes.findById(question.id))!.closedAt, isNotNull);
+    });
+
+    test('eine verdrängte Anweisung weiß, bis wann sie galt', () async {
+      final old = await notes.create(type: NoteType.instruction, body: 'alt');
+      clock.advance(const Duration(days: 3));
+      await notes.create(type: NoteType.instruction, body: 'neu');
+
+      expect(
+        (await notes.findById(old.id))!.closedAt,
+        DateTime.utc(2026, 3, 4, 9),
+      );
+    });
+  });
+
+  group('Rückgängig', () {
+    test('ein gelöschter Zettel kommt zurück', () async {
+      final note = await notes.create(body: 'aus Versehen gelöscht');
+      await notes.delete(note.id);
+
+      await notes.restore(note.id);
+
+      final row = (await notes.findById(note.id))!;
+      expect(row.deletedAt, isNull);
+      expect(row.pendingSync, isTrue);
+      expect((await notes.watchInbox().first).single.id, note.id);
+    });
+
+    test(
+      'Löschen nimmt die Bilder mit, Zurückholen bringt sie wieder',
+      () async {
+        final note = await notes.create(body: 'mit Bild');
+        final image = await attachments.add(note.id, pixel());
+
+        await notes.delete(note.id);
+        expect((await attachments.findById(image.id))!.deletedAt, isNotNull);
+        expect(await attachments.forNote(note.id), isEmpty);
+
+        await notes.restore(note.id);
+        expect((await attachments.forNote(note.id)).map((a) => a.id), [
+          image.id,
+        ]);
+      },
+    );
+
+    test('ein vorher einzeln entferntes Bild bleibt entfernt', () async {
+      final note = await notes.create(body: 'zwei Bilder');
+      final removed = await attachments.add(note.id, pixel());
+      final kept = await attachments.add(note.id, pixel());
+      await attachments.delete(removed.id);
+      clock.advance(const Duration(minutes: 1));
+
+      await notes.delete(note.id);
+      await notes.restore(note.id);
+
+      expect((await attachments.forNote(note.id)).map((a) => a.id), [kept.id]);
+    });
+
+    test('ein gelöschtes Projekt nimmt die Bilder seiner Zettel mit', () async {
+      final project = await projects.create(name: 'Weg');
+      final note = await notes.create(projectId: project.id, body: 'x');
+      final image = await attachments.add(note.id, pixel());
+
+      await projects.delete(project.id);
+
+      final row = (await attachments.findById(image.id))!;
+      expect(row.deletedAt, isNotNull);
+      expect(row.pendingSync, isTrue);
+    });
+  });
+
+  group('Übersicht', () {
+    test('Priorisiertes kommt nach Wichtigkeit, Erledigtes nicht', () async {
+      final a = await projects.create(name: 'A');
+      final b = await projects.create(name: 'B');
+      final could = await notes.create(
+        projectId: a.id,
+        type: NoteType.idea,
+        body: 'kann',
+        priority: NotePriority.could,
+      );
+      final must = await notes.create(
+        projectId: b.id,
+        type: NoteType.step,
+        body: 'muss',
+        priority: NotePriority.must,
+      );
+      final should = await notes.create(
+        type: NoteType.question,
+        body: 'soll',
+        priority: NotePriority.should,
+      );
+      final done = await notes.create(
+        projectId: a.id,
+        type: NoteType.step,
+        body: 'war muss',
+        priority: NotePriority.must,
+      );
+      await notes.setStatus(done.id, NoteStatus.done);
+      await notes.create(projectId: a.id, type: NoteType.step, body: 'ohne');
+
+      final prioritized = await notes.watchPrioritized().first;
+
+      expect(prioritized.map((n) => n.id), [must.id, should.id, could.id]);
+    });
+
+    test('zuletzt Erledigtes, neuestes zuerst', () async {
+      final first = await notes.create(type: NoteType.step, body: 'eins');
+      final second = await notes.create(type: NoteType.step, body: 'zwei');
+      await notes.create(type: NoteType.step, body: 'offen');
+      await notes.setStatus(first.id, NoteStatus.done);
+      clock.advance(const Duration(minutes: 5));
+      await notes.setStatus(second.id, NoteStatus.done);
+
+      final closed = await notes.watchRecentlyClosed().first;
+
+      expect(closed.map((n) => n.id), [second.id, first.id]);
+    });
+
+    test('Fortschritt zählt offene und erledigte Arbeitszettel', () async {
+      final project = await projects.create(name: 'Chess');
+      final done = await notes.create(
+        projectId: project.id,
+        type: NoteType.step,
+        body: 'fertig',
+      );
+      await notes.setStatus(done.id, NoteStatus.done);
+      await notes.create(
+        projectId: project.id,
+        type: NoteType.requirement,
+        body: 'offen',
+      );
+      await notes.create(
+        projectId: project.id,
+        type: NoteType.reference,
+        body: 'zählt nicht',
+      );
+      await notes.create(projectId: project.id, type: NoteType.log, body: 'x');
+
+      final progress = await notes.watchProgress().first;
+
+      expect(progress[project.id], const NoteProgress(open: 1, closed: 1));
+      expect(progress[project.id]!.ratio, 0.5);
     });
   });
 }

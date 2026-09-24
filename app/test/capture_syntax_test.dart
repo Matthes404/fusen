@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fusen/src/data/models/note_status.dart';
 import 'package:fusen/src/data/models/note_type.dart';
 import 'package:fusen/src/features/capture/capture_syntax.dart';
 
@@ -113,6 +114,51 @@ void main() {
         expect(alias, isNotNull, reason: 'Kein Kurzbefehl für $type');
         expect(parseCapture('!$alias Text').type, type);
       }
+    });
+  });
+
+  group('Priorität', () {
+    test('!hoch, !mittel, !niedrig', () {
+      expect(
+        parseCapture('!hoch Server neu starten').priority,
+        NotePriority.must,
+      );
+      expect(parseCapture('!mittel Doku lesen').priority, NotePriority.should);
+      expect(parseCapture('!niedrig aufräumen').priority, NotePriority.could);
+    });
+
+    test('Muss/Soll/Kann und die Kurzformen gehen genauso', () {
+      expect(parseCapture('!muss x').priority, NotePriority.must);
+      expect(parseCapture('!soll x').priority, NotePriority.should);
+      expect(parseCapture('!kann x').priority, NotePriority.could);
+      expect(parseCapture('!p1 x').priority, NotePriority.must);
+      expect(parseCapture('!P3 x').priority, NotePriority.could);
+      expect(parseCapture('!high x').priority, NotePriority.must);
+    });
+
+    test('verträgt sich mit Typ, Projekt und Tags', () {
+      final draft = parseCapture('@chess !schritt !hoch Perft reparieren #bug');
+
+      expect(draft.projectQuery, 'chess');
+      expect(draft.type, NoteType.step);
+      expect(draft.priority, NotePriority.must);
+      expect(draft.tags, ['bug']);
+      expect(draft.body, 'Perft reparieren');
+    });
+
+    test('die Reihenfolge von Typ und Priorität ist egal', () {
+      final draft = parseCapture('!hoch !frage Wer zahlt?');
+
+      expect(draft.type, NoteType.question);
+      expect(draft.priority, NotePriority.must);
+      expect(draft.body, 'Wer zahlt?');
+    });
+
+    test('eine zweite Priorität bleibt im Text stehen', () {
+      final draft = parseCapture('!hoch !niedrig Text');
+
+      expect(draft.priority, NotePriority.must);
+      expect(draft.body, '!niedrig Text');
     });
   });
 }

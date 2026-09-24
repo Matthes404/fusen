@@ -103,6 +103,13 @@ class Notes extends Table {
 
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// Wann der Zettel abgeschlossen wurde – erledigt, umgesetzt, beantwortet
+  /// oder verworfen. `null`, solange er offen ist.
+  ///
+  /// `updatedAt` taugt dafür nicht: jede spätere Änderung am Text würde den
+  /// Zeitpunkt des Abhakens überschreiben.
+  DateTimeColumn get closedAt => dateTime().nullable()();
+
   DateTimeColumn get archivedAt => dateTime().nullable()();
 
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -114,6 +121,74 @@ class Notes extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Ein Bild an einem Zettel.
+///
+/// Hier steht nur die Beschreibung, die Bilddaten liegen in
+/// [AttachmentBlobs]. Die Trennung hält jede Liste leicht: drift fragt eine
+/// beobachtete Tabelle bei jeder Änderung neu ab, und dabei jedes Mal ein
+/// paar Megabyte Bilder mitzulesen, würde man beim Scrollen merken.
+@DataClassName('AttachmentRow')
+class Attachments extends Table {
+  TextColumn get id => text()();
+
+  /// Bewusst ohne Fremdschlüssel – aus demselben Grund wie bei
+  /// `Notes.projectId`: beim Sync kann ein Bild vor seinem Zettel eintreffen.
+  TextColumn get noteId => text()();
+
+  /// Der ursprüngliche Dateiname, etwa „Bildschirmfoto.png“.
+  TextColumn get fileName => text()();
+
+  TextColumn get mimeType => text()();
+
+  IntColumn get byteSize => integer()();
+
+  /// Maße in Pixeln, damit die Oberfläche den Platz reservieren kann, bevor
+  /// das Bild geladen ist. `null`, wenn das Format sie nicht verrät.
+  IntColumn get width => integer().nullable()();
+
+  IntColumn get height => integer().nullable()();
+
+  RealColumn get sortOrder => real()();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  DateTimeColumn get updatedAt => dateTime()();
+
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  TextColumn get deviceId => text()();
+
+  /// Nur lokal: die Bilddaten liegen auf diesem Gerät vor.
+  ///
+  /// Nach einem Abgleich kennt ein Gerät das Bild oft schon, hat es aber noch
+  /// nicht heruntergeladen – die Oberfläche zeigt dann einen Platzhalter.
+  BoolColumn get hasData => boolean().withDefault(const Constant(false))();
+
+  /// Nur lokal: die Bilddaten sind beim Server angekommen. Bis dahin muss
+  /// jeder Abgleich die Datei mitschicken, danach nur noch die Beschreibung.
+  BoolColumn get uploaded => boolean().withDefault(const Constant(false))();
+
+  /// Nur lokal: Dateiname auf dem Server. PocketBase hängt beim Hochladen
+  /// einen Zufallsteil an, zum Herunterladen braucht man den echten Namen.
+  TextColumn get remoteFile => text().nullable()();
+
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// Die Bilddaten zu [Attachments] – geschrieben einmal, gelesen bei Bedarf.
+@DataClassName('AttachmentBlobRow')
+class AttachmentBlobs extends Table {
+  TextColumn get attachmentId => text()();
+
+  BlobColumn get bytes => blob()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {attachmentId};
 }
 
 /// Schlüssel-Wert-Speicher für Geräteeinstellungen.

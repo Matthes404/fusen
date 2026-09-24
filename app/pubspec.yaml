@@ -21,6 +21,8 @@ dependencies:
 
   # Sync
   pocketbase: ^0.25.1
+  # Bilder herunterladen – PocketBase liefert nur die Adresse.
+  http: ^1.6.0
 
   # Darstellung
   flutter_markdown_plus: ^1.0.12
@@ -29,6 +31,9 @@ dependencies:
 
   # IDs
   uuid: ^4.6.0
+
+  # Bilder verkleinern, bevor sie gespeichert und abgeglichen werden
+  image: ^4.10.1
 
   # Desktop-Integration (globaler Hotkey, Fenstersteuerung)
   hotkey_manager: ^0.2.3

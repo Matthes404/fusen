@@ -146,6 +146,45 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$notes/$id" \
             -H "Authorization: $token")" = 403
 
+          echo '7) Zettel kennen den Abschlusszeitpunkt'
+          curl -fsS -o /dev/null -X PATCH "$notes/$id" -H "Authorization: $token" \
+            -H 'Content-Type: application/json' \
+            -d '{"status": "done", "closed_at": "2026-01-02T00:00:00.000Z"}'
+          test "$(curl -fsS "$notes/$id" -H "Authorization: $token" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["closed_at"])')" \
+            = '2026-01-02T00:00:00.000Z'
+
+          echo '8) Ein Bild lässt sich samt Datei anlegen'
+          images=http://127.0.0.1:8090/api/collections/attachments/records
+          image=aaaaaaaabbbbccccddddeeeeffff0002
+          printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0\x00\x00\x00\x00IEND\xaeB`\x82' > pixel.png
+          file=$(curl -fsS -X POST "$images" -H "Authorization: $token" \
+            -F "@jsonPayload={\"id\": \"$image\", \"note_id\": \"$id\",
+              \"file_name\": \"pixel.png\", \"mime_type\": \"image/png\",
+              \"created_at\": \"2026-01-01T00:00:00.000Z\",
+              \"updated_at\": \"2026-01-01T00:00:00.000Z\"}" \
+            -F 'file=@pixel.png' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["file"])')
+          files=http://127.0.0.1:8090/api/files/attachments/$image/$file
+
+          echo '9) Die Datei gibt es nur mit Datei-Token'
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$files")" = 404
+          filetoken=$(curl -fsS -X POST http://127.0.0.1:8090/api/files/token \
+            -H "Authorization: $token" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          curl -fsS -o back.png "$files?token=$filetoken"
+          cmp pixel.png back.png
+
+          echo '10) Nur Bilder, und auch sie nie hart löschen'
+          echo 'kein Bild' > text.png
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$images" \
+            -H "Authorization: $token" \
+            -F "@jsonPayload={\"id\": \"aaaaaaaabbbbccccddddeeeeffff0003\",
+              \"note_id\": \"$id\", \"created_at\": \"x\", \"updated_at\": \"x\"}" \
+            -F 'file=@text.png')" = 400
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+            "$images/$image" -H "Authorization: $token")" = 403
+
       - name: App gleicht gegen den echten Server ab
         # Die Attrappe in sync_service_test.dart prüft die Logik; hier geht
         # es darum, dass die App und PocketBase wirklich dieselbe Sprache

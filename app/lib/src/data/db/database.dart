@@ -11,7 +11,9 @@ part 'database.g.dart';
 
 /// Lokale Datenbank. Fusen ist local-first: alles läuft zuerst gegen SQLite,
 /// der Sync arbeitet im Hintergrund und ist optional.
-@DriftDatabase(tables: [Projects, Notes, Settings])
+@DriftDatabase(
+  tables: [Projects, Notes, Attachments, AttachmentBlobs, Settings],
+)
 class FusenDatabase extends _$FusenDatabase {
   FusenDatabase(super.e);
 
@@ -39,8 +41,9 @@ class FusenDatabase extends _$FusenDatabase {
   static QueryExecutor _memoryExecutor() =>
       DatabaseConnection(NativeDatabase.memory());
 
+  /// Version 2: Abschlusszeitpunkt an Zetteln, Bilder als Anhänge.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// Zeitstempel als ISO-8601-Text speichern.
   ///
@@ -55,17 +58,36 @@ class FusenDatabase extends _$FusenDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
-      await customStatement(
-        'CREATE INDEX IF NOT EXISTS idx_notes_project '
-        'ON notes (project_id, type, status)',
-      );
-      await customStatement(
-        'CREATE INDEX IF NOT EXISTS idx_notes_pending ON notes (pending_sync)',
-      );
-      await customStatement(
-        'CREATE INDEX IF NOT EXISTS idx_projects_pending '
-        'ON projects (pending_sync)',
-      );
+      await _createIndexes();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(notes, notes.closedAt);
+        // Wann ein Zettel abgehakt wurde, weiß Version 1 nicht. Die letzte
+        // Änderung ist die beste Schätzung – meist war sie das Abhaken.
+        await customStatement(
+          "UPDATE notes SET closed_at = updated_at WHERE status != 'open'",
+        );
+        await m.createTable(attachments);
+        await m.createTable(attachmentBlobs);
+      }
+      await _createIndexes();
     },
   );
+
+  Future<void> _createIndexes() async {
+    for (final statement in const [
+      'CREATE INDEX IF NOT EXISTS idx_notes_project '
+          'ON notes (project_id, type, status)',
+      'CREATE INDEX IF NOT EXISTS idx_notes_pending ON notes (pending_sync)',
+      'CREATE INDEX IF NOT EXISTS idx_projects_pending '
+          'ON projects (pending_sync)',
+      'CREATE INDEX IF NOT EXISTS idx_attachments_note '
+          'ON attachments (note_id)',
+      'CREATE INDEX IF NOT EXISTS idx_attachments_pending '
+          'ON attachments (pending_sync)',
+    ]) {
+      await customStatement(statement);
+    }
+  }
 }
