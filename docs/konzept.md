@@ -55,7 +55,7 @@ Workspace
 
 | Typ | Bedeutung | Besonderheit |
 |---|---|---|
-| **Anforderung** | Was das Ergebnis können muss | Status: offen / umgesetzt / verworfen; Priorität Muss / Soll / Kann |
+| **Anforderung** | Was das Ergebnis können muss | Status: offen / umgesetzt / verworfen |
 | **Nächster Schritt** | Konkrete To-dos | Abhakbar, per Drag-and-drop sortierbar |
 | **Aktuelle Anweisung** | Was gerade gilt (z. B. Vorgabe vom Betreuer, Fokus der Woche) | Nur *ein* aktiver Zettel pro Projekt, ältere wandern automatisch in den Verlauf |
 | **Idee** | Vage Einfälle, noch ohne Verpflichtung | Kann in Anforderung oder Schritt umgewandelt werden |
@@ -64,6 +64,16 @@ Workspace
 | **Referenz** | Links, Befehle, Snippets, Pfade | Copy-Button, Code-Formatierung |
 
 Ein Zettel kann seinen Typ jederzeit wechseln (Idee → Anforderung → Nächster Schritt).
+
+Anforderung, Nächster Schritt, Idee und Frage sind **Aufgaben**: sie tragen
+eine Priorität (hoch / mittel / niedrig, früher Muss / Soll / Kann) und
+werden abgehakt – mit einem Tipp auf der Karte, ohne den Zettel zu öffnen.
+Wann etwas erledigt wurde, bleibt am Zettel stehen. Erledigtes verschwindet
+nicht, sondern klappt weg: sichtbar, wenn man es sucht, aus dem Weg, wenn
+nicht.
+
+An jeden Zettel lassen sich **Bilder** hängen – ein Foto vom Whiteboard,
+ein Bildschirmfoto der Fehlermeldung.
 
 ### Projekt-Ansicht (Review-Modus)
 
@@ -79,6 +89,13 @@ Pro Projekt eine Seite mit festen Bereichen:
 
 Dazu eine **Inbox** für Zettel ohne Projektzuordnung.
 
+### Übersicht
+
+Die Startseite: jedes Projekt als Haftzettel mit Fortschritt, dem nächsten
+Schritt und der geltenden Anweisung, daneben die Inbox. Darunter, was über
+alle Projekte hinweg priorisiert ist, und das zuletzt Erledigte. Wer die App
+öffnet, sieht ohne einen Klick, wo er steht.
+
 ## 5. Schnelleingabe (Capture)
 
 - **Desktop:** globaler Hotkey öffnet ein kleines Fenster mit nur einem Textfeld
@@ -86,11 +103,14 @@ Dazu eine **Inbox** für Zettel ohne Projektzuordnung.
 - **Kurzsyntax:**
   - `@projekt` – Projekt zuordnen (`@chess`, `@praktikum`)
   - `!typ` – Typ setzen (`!anf`, `!schritt`, `!idee`, `!frage`, `!log`, `!ref`)
+  - `!hoch` / `!mittel` / `!niedrig` – Priorität
   - `#tag` – freies Schlagwort
-  - Beispiel: `@chess !schritt NNUE-Export auf int8 testen`
+  - Beispiel: `@chess !schritt !hoch NNUE-Export auf int8 testen`
 - Ohne Angabe: Zettel landet in der Inbox als „Idee“ – lieber unsauber gespeichert als gar nicht
 - Zuletzt bearbeitetes Projekt wird vorgeschlagen
 - Enter speichert und schließt; Shift+Enter für Mehrzeiler
+- **Listen werden zu Zetteln:** Eine eingefügte Aufzählung legt pro Punkt einen Zettel an, abgehakte Kästchen (`[x]`) gleich als erledigt. Im Projekt nimmt „Aus einer Liste anlegen“ ganze Notizen auf und verteilt sie anhand ihrer Überschriften („Fragen:“, „Nächste Schritte:“) auf die Typen – man sieht vorher, was entsteht, und wählt ab, was nicht soll.
+- Bilder kommen per Einfügen oder Hineinziehen mit
 
 ## 6. Feature-Priorisierung
 
@@ -115,8 +135,19 @@ Dazu eine **Inbox** für Zettel ohne Projektzuordnung.
 | Markdown-Export pro Projekt | Ersatz für das bisherige Word-Dokument |
 | Mobil-Widget / Schnellaktion für Capture | |
 | „Fokus heute“: pro Projekt einen Schritt anpinnen, projektübergreifende Liste | |
-| Import: Word-Text in die Inbox kippen und zügig zuordnen | |
+| Import: Word-Text in die Inbox kippen und zügig zuordnen | Grundlage steht: „Aus einer Liste anlegen“ zerlegt eingefügten Text in Zettel |
 | Verlaufsansicht für Anweisungen (wann galt was?) | |
+
+**Seit dem MVP dazugekommen**
+
+| Feature | Anmerkung |
+|---|---|
+| Übersicht als Startseite | Fortschritt, nächster Schritt, Wichtiges, zuletzt Erledigtes |
+| Priorität und Abhaken für alle Aufgaben, mit Datum | nicht mehr nur für Anforderungen und Schritte |
+| Aus Listen Zettel erzeugen | in der Schnelleingabe und als Import im Projekt |
+| Bilder an Zetteln | Galerie, Kamera, Zwischenablage, Hineinziehen; im Sync enthalten |
+| Rückgängig für Löschen, Abhaken, Verschieben | statt Bestätigungsdialogen |
+| Installierbare Releases für alle Plattformen | APK, IPA, Windows-Installer, DMG, .deb |
 
 **P2 – Ausbau**
 
@@ -163,8 +194,13 @@ Note
   status: open | done | discarded
   priority: must | should | could | null
   tags: [string]
-  created_at, updated_at, archived_at, deleted_at
+  created_at, updated_at, closed_at, archived_at, deleted_at
   device_id (welches Gerät zuletzt geschrieben hat)
+
+Attachment
+  id (UUID), note_id, file_name, mime_type, byte_size, width, height, sort_order
+  created_at, updated_at, deleted_at, device_id
+  (die Bilddaten selbst liegen getrennt davon)
 
 NoteLink (P2)
   from_note_id, to_note_id, kind (relates | implements | blocks)
@@ -195,11 +231,10 @@ LICENSE, README.md, CONTRIBUTING.md
 | Trigger | Was passiert |
 |---|---|
 | Jeder Push / PR | `flutter analyze`, `flutter test`, Format-Check |
-| Push auf `main` | Debug-Builds: Android APK, Linux, Windows, macOS als Artefakte am Workflow-Lauf |
-| Tag `v*` | Release-Builds für alle Plattformen, automatisch als GitHub Release mit Changelog veröffentlicht; Docker-Image des Servers nach GHCR |
-| Optional | iOS-Build ohne Signierung als Artefakt (Signierung erst bei App-Store-Veröffentlichung) |
+| Push auf `main`, oder ein Branch ändert Natives | Installierbare Pakete für alle Plattformen als Artefakte am Workflow-Lauf |
+| Tag `v*` oder Knopfdruck | Dieselben Pakete als GitHub Release mit Installationsanleitung und Changelog; Docker-Image des Servers nach GHCR |
 
-Damit gibt es nach jedem Merge ein installierbares Build zum Ausprobieren, ohne lokal bauen zu müssen.
+Die Pakete: Android-APK, iOS-IPA (unsigniert, zum Sideloaden – signiert erst bei App-Store-Veröffentlichung), Windows-Installer, macOS-DMG, Linux als .deb und Archiv. Damit gibt es nach jedem Merge ein installierbares Build zum Ausprobieren, ohne lokal bauen zu müssen.
 
 ## 10. MVP-Reihenfolge
 

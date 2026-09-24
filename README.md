@@ -32,11 +32,25 @@ die Rückfragen beim ersten Öffnen. Wie ein Release entsteht, steht in
 ## Was drin ist
 
 * **Schnelleingabe** – ein Textfeld, sonst nichts. `@projekt` ordnet zu,
-  `!typ` setzt den Zettel-Typ, `#tag` hängt ein Schlagwort an.
-  Beispiel: `@chess !schritt NNUE-Export auf int8 testen`.
+  `!typ` setzt den Zettel-Typ, `!hoch` / `!mittel` / `!niedrig` die
+  Priorität, `#tag` hängt ein Schlagwort an.
+  Beispiel: `@chess !schritt !hoch NNUE-Export auf int8 testen`.
   Enter speichert, Shift+Enter macht eine neue Zeile.
   Auf dem Desktop öffnet **Strg+Umschalt+Leertaste** von überall ein kleines
   Fenster – auch wenn Fusen gar nicht sichtbar ist.
+* **Aus Listen werden Zettel** – eine eingefügte Aufzählung legt pro Punkt
+  einen Zettel an, `[x]` gleich als erledigt. Im Projekt verteilt „Aus einer
+  Liste anlegen“ ganze Notizen samt Überschriften („Fragen:“, „Nächste
+  Schritte:“) auf die passenden Typen.
+* **Übersicht** als Startseite: jedes Projekt als Haftzettel mit Fortschritt,
+  nächstem Schritt und geltender Anweisung, darunter das Wichtigste aus allen
+  Projekten und das zuletzt Erledigte.
+* **Abhaken und priorisieren** direkt auf der Karte – mit einem Tipp auf den
+  Kreis, auf dem Handy auch per Wischen. Erledigtes behält sein Datum und
+  klappt weg; Löschen, Abhaken und Verschieben lassen sich zurücknehmen.
+* **Bilder an Zetteln** – aus der Galerie oder mit der Kamera, auf dem
+  Desktop auch per Strg+V aus der Zwischenablage oder einfach hineingezogen.
+  Sie werden verkleinert gespeichert und reisen beim Sync mit.
 * **Sieben Zettel-Typen** mit eigenen Regeln: Anforderung, Nächster Schritt,
   Aktuelle Anweisung, Idee, Frage, Log, Referenz. Jeder Zettel kann seinen Typ
   jederzeit wechseln.
@@ -55,16 +69,18 @@ die Rückfragen beim ersten Öffnen. Wie ein Release entsteht, steht in
 
 | Typ | Kurzbefehl | Besonderheit |
 |---|---|---|
-| Anforderung | `!anf` | Status offen / umgesetzt / verworfen, Priorität Muss / Soll / Kann |
+| Anforderung | `!anf` | Status offen / umgesetzt / verworfen |
 | Nächster Schritt | `!schritt` | abhakbar, per Drag-and-drop sortierbar |
 | Aktuelle Anweisung | `!anw` | nur **eine** aktive pro Projekt, ältere wandern in den Verlauf |
-| Idee | `!idee` | Standard, wenn nichts angegeben ist |
+| Idee | `!idee` | Standard, wenn nichts angegeben ist; umsetzen oder verwerfen |
 | Frage | `!frage` | Feld für die Antwort; beantwortet heißt archiviert |
 | Log | `!log` | Zeitstempel, chronologisch, nach 24 Stunden festgeschrieben |
 | Referenz | `!ref` | Links, Befehle, Snippets – mit Kopier-Knopf |
 
-Die englischen Kurzbefehle (`!todo`, `!req`, `!now`, `!link`, …) funktionieren
-genauso.
+Anforderung, Schritt, Idee und Frage sind Aufgaben: sie tragen eine Priorität
+(hoch / mittel / niedrig) und lassen sich abhaken; wann, steht danach am
+Zettel. Die englischen Kurzbefehle (`!todo`, `!req`, `!now`, `!link`, `!high`,
+…) funktionieren genauso.
 
 ## App bauen und starten
 
